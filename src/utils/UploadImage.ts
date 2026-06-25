@@ -5,7 +5,7 @@ export const uploadToCloudinary = (fileBuffer: Buffer, folder: string, filename:
   return new Promise<string>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { folder, public_id: filename,transformation: [
-        { quality: "auto", fetch_format: "auto" } // <-- best compression combo
+        { quality: "auto", fetch_format: "auto" } 
       ] },
       (error, result) => {
         if (error) return reject(error);
