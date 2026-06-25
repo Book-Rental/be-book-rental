@@ -59,10 +59,10 @@ export const Messages = {
     Order_Deleted: "Order Deleted successfully!",
     Order_Comments_Required: "Send Proper Comments, message and userId required",
     Order_Estimate_Date_Error: "Estimated delivery date should be greater than the current estimated delivery date.",
-    UserId_Required_To_Update_Address : "UserId required to update address",
-    AddressId_Required_To_Update_Address : "Address required to update address",
-    UserId_Required_To_Delete_Address : "UserId required to delete address",
-    AddressId_Required_To_Delete_Address : "Address required to delete address",
+    UserId_Required_To_Update_Address: "UserId required to update address",
+    AddressId_Required_To_Update_Address: "Address required to update address",
+    UserId_Required_To_Delete_Address: "UserId required to delete address",
+    AddressId_Required_To_Delete_Address: "Address required to delete address",
     Address_Updated: "Address update successfully",
     Address_Deleted: "Address deleted successfully",
 
@@ -71,6 +71,17 @@ export const Messages = {
     Category_Deleted: "Category deleted successfully",
     Categories_Fetched: "Categories fetched successfully",
     Category_Fetched: "Category fetched successfully",
+
+    Book_Not_Found: "Book not found",
+    Book_Deleted_Successfully: "Book deleted successfully",
+    Book_Created_Successfully: "Book created successfully",
+    Book_Updated_Successfully: "Book updated successfully",
+    Book_Found_Successfully: "Book found successfully",
+    Books_Found_Successfully: "Books found successfully",
+    Book_Images_Updated_Successfully: "Book images updated successfully",
+    Book_Is_Not_Found: "Book is not found",
+    Book_Images_Required: "Book images are required",
+    Book_Images_Too_Many: "Too many images. Maximum allowed is 5",
 }
 
 export const EmailSubjects = {
