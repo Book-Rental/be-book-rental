@@ -24,7 +24,6 @@ const categorySchema = new Schema<ICategory>(
       default: true,
     },
 
-
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
