@@ -64,6 +64,7 @@ export interface ICategory {
   name: string;
   description?: string;
   isActive: boolean;
+  isPopular: boolean;
   createdAt: Date;
   updatedAt: Date;
   createdBy?: Types.ObjectId;

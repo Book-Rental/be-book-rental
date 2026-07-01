@@ -19,8 +19,12 @@ const categorySchema = new Schema<ICategory>(
       type: Boolean,
       default: true,
     },
+    isPopular: {
+      type: Boolean,
+      default: true,
+    },
 
-   
+
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
