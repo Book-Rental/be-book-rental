@@ -18,11 +18,38 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
       isAvailable,
       availableForSale,
       availableForRent,
+      categoryName,
     } = query;
 
     // Filter by Category ID
     if (categoryID && Types.ObjectId.isValid(categoryID)) {
       filter.categoryId = new Types.ObjectId(categoryID);
+    }
+
+    //Filter by Category Name
+    if (categoryName?.trim()) {
+      const categoryNames = categoryName
+        .split(",")
+        .map((name: string) => name.trim())
+        .filter(Boolean);
+
+      const categories = await Category.find({
+        $or: categoryNames.map((name: string) => ({
+          name: {
+            $regex: name,
+            $options: "i",
+          },
+        })),
+      }).select("_id");
+
+      filter.categoryId =
+        categories.length > 0
+          ? {
+            $in: categories.map((category) => category._id),
+          }
+          : {
+            $in: [],
+          };
     }
 
     // Global Search (Book Name + Author + Category Name)
