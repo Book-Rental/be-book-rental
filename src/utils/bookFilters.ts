@@ -1,99 +1,130 @@
-import mongoose, { FilterQuery, Types } from 'mongoose';
-import { IBook } from '../models/Book';
-import Category from '../models/Category';
+import mongoose, { FilterQuery, Types } from "mongoose";
+import { IBook } from "../models/Book";
+import Category from "../models/Category";
 
 // Function to build the filter object
-export const buildFilter = async (
-  query: any
-): Promise<FilterQuery<IBook>> => {
+
+export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
   const filter: FilterQuery<IBook> = {};
 
   try {
     const {
       categoryID,
-      categoryName,
       name,
+      language,
       minPrice,
       maxPrice,
       isPopular,
       isAvailable,
+      availableForSale,
+      availableForRent,
     } = query;
-
-    console.log('Query:', query);
 
     // Filter by Category ID
     if (categoryID && Types.ObjectId.isValid(categoryID)) {
       filter.categoryId = new Types.ObjectId(categoryID);
     }
 
-    // Filter by Category Name
-    if (categoryName) {
-      const category = await Category.findOne({
-        name: {
-          $regex: categoryName,
-          $options: 'i',
-        },
-      });
+    // Global Search (Book Name + Author + Category Name)
+    if (name?.trim()) {
+      let keyword = name.replace(/%(?![0-9A-Fa-f]{2})/g, "%25");
+      keyword = decodeURIComponent(keyword);
 
-      if (category) {
-        filter.categoryId = category._id;
-      } else {
-        // No category found -> return no books
-        filter.categoryId = new Types.ObjectId();
+      // Find matching categories
+      const categories = await Category.find({
+        name: {
+          $regex: keyword,
+          $options: "i",
+        },
+      }).select("_id");
+
+      const orConditions: FilterQuery<IBook>[] = [
+        {
+          name: {
+            $regex: keyword,
+            $options: "i",
+          },
+        },
+        {
+          author: {
+            $regex: keyword,
+            $options: "i",
+          },
+        },
+      ];
+
+      // Search by Category
+      if (categories.length > 0) {
+        orConditions.push({
+          categoryId: {
+            $in: categories.map((category) => category._id),
+          },
+        });
       }
+
+      filter.$or = orConditions;
     }
 
-    // Search by Book Name
-    if (name) {
-      let queryName = name.replace(/%(?![0-9A-Fa-f]{2})/g, '%25');
-      queryName = decodeURIComponent(queryName);
-
-      filter.name = {
-        $regex: queryName,
-        $options: 'i',
+    // Language Filter
+    if (language?.trim()) {
+      filter.language = {
+        $in: language
+          .split(",")
+          .map((lang: string) => new RegExp(`^${lang.trim()}$`, "i")),
       };
     }
 
-    // Price Range
+    // Purchase Price
     if (minPrice || maxPrice) {
       filter.purchasePrice = {};
 
-      if (minPrice)
-        filter.purchasePrice.$gte = parseFloat(minPrice);
+      if (minPrice) {
+        filter.purchasePrice.$gte = Number(minPrice);
+      }
 
-      if (maxPrice)
-        filter.purchasePrice.$lte = parseFloat(maxPrice);
+      if (maxPrice) {
+        filter.purchasePrice.$lte = Number(maxPrice);
+      }
     }
 
-    // Popular
+    // Boolean Filters
     if (isPopular !== undefined) {
-      filter.isPopular = isPopular === 'true';
+      filter.isPopular = isPopular === "true";
     }
 
-    // Available
     if (isAvailable !== undefined) {
-      filter.isAvailable = isAvailable === 'true';
+      filter.isAvailable = isAvailable === "true";
     }
 
-    console.log('Final Filter:', filter);
+    if (availableForSale !== undefined) {
+      filter.availableForSale = availableForSale === "true";
+    }
+
+    if (availableForRent !== undefined) {
+      filter.availableForRent = availableForRent === "true";
+    }
+
+    console.log("Final Filter:", filter);
 
     return filter;
   } catch (err) {
-    console.log('Filter Query Error:', err);
+    console.error("Filter Query Error:", err);
     return filter;
   }
 };
 
 // Function to get sort option
-export const getSortOption = (sortBy: string | undefined): { [key: string]: 1 | -1 } => {
+export const getSortOption = (
+  sortBy: string | undefined,
+): { [key: string]: 1 | -1 } => {
   switch (sortBy) {
-    case 'priceLowToHigh':
+    case "priceLowToHigh":
       return { purchasePrice: 1 };
-    case 'priceHighToLow':
+    case "priceHighToLow":
       return { purchasePrice: -1 };
-    case 'nameAToZ':
+    case "nameAToZ":
       return { name: 1 };
-    case 'nameZToA':
+    case "nameZToA":
       return { name: -1 };
     default:
       return { createdAt: -1 };
@@ -113,7 +144,7 @@ export const buildBookAggregationPipeline = async (
   filterQuery: any,
   sortBy: string | undefined,
   page: number,
-  limit: number
+  limit: number,
 ) => {
   const filter = await buildFilter(filterQuery);
   const sortOption = getSortOption(sortBy);
@@ -125,14 +156,14 @@ export const buildBookAggregationPipeline = async (
     // Lookup to get category details mapping to categoryId
     {
       $lookup: {
-        from: 'categories',
-        localField: 'categoryId',
-        foreignField: '_id',
-        as: 'categoryDetails',
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        as: "categoryDetails",
       },
     },
 
-    { $unwind: { path: '$categoryDetails', preserveNullAndEmptyArrays: true } },
+    { $unwind: { path: "$categoryDetails", preserveNullAndEmptyArrays: true } },
 
     // Projection matching your exact Book schema
     {
@@ -163,9 +194,9 @@ export const buildBookAggregationPipeline = async (
         status: 1,
         createdAt: 1,
         category: {
-          id: '$categoryDetails._id',
-          name: '$categoryDetails.name',
-        }
+          id: "$categoryDetails._id",
+          name: "$categoryDetails.name",
+        },
       },
     },
 
