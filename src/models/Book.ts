@@ -30,6 +30,7 @@ export interface IBook extends IBasicFields {
     publicationDate?: Date;
     isPopular?: boolean;
     images?: Image[];
+    isAvailable?: boolean;
 }
 
 const bookSchema = new Schema<IBook>(
@@ -127,6 +128,10 @@ const bookSchema = new Schema<IBook>(
             },
         ],
         isActive: {
+            type: Boolean,
+            default: true
+        },
+        isAvailable: {
             type: Boolean,
             default: true
         },

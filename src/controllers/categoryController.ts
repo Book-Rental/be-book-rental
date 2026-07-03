@@ -17,15 +17,16 @@ export const createCategory = async (req: Request, res: Response) => {
 
 }
 
-export const getAllCategories = async (req: Request, res: Response) => {
+export const getAllCategories = async (req: Request, res: Response): Promise<void> => {
     try {
-        const categories = await getAllCategoriesService();
+        const { isPopular } = req.query as { isPopular?: string };
+        const categories = await getAllCategoriesService(isPopular);
         successResponse(res, categories, Messages.Categories_Fetched, StatusCode.OK);
     } catch (err: any) {
         failResponse(res, err?.message || err, StatusCode.Bad_Request);
         return;
     }
-}
+};
 
 
 export const getCategoryById = async (req: Request, res: Response) => {
