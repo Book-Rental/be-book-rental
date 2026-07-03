@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 import { auth } from '../middlewares/authMiddleware';
 
-import { createCategory, deleteCategory, getAllCategories, getCategoryById, updateCategory } from '../controllers/categoryController';
+import { createCategory, deleteAllCategories, deleteCategory, getAllCategories, getCategoryById, updateCategory } from '../controllers/categoryController';
 
 const router = Router();
 
@@ -12,5 +12,6 @@ router.get('/:id', getCategoryById);
 router.post('/create', createCategory);
 router.put('/:id', updateCategory);
 router.delete('/:id', deleteCategory);
+router.delete('/', deleteAllCategories);
 
 export default router;

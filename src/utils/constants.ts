@@ -1,3 +1,4 @@
+import Category from "../models/Category";
 
 export const JWT_TOKEN_NAME = 'Authorization';
 
@@ -68,6 +69,7 @@ export const Messages = {
 
     Category_Created: "Category created successfully",
     Category_Updated: "Category updated successfully",
+    Category_ALL_Deleted: "All categories deleted successfully",
     Category_Deleted: "Category deleted successfully",
     Categories_Fetched: "Categories fetched successfully",
     Category_Fetched: "Category fetched successfully",

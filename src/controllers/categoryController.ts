@@ -1,4 +1,4 @@
-import { createCategoryService, deleteCategoryService, getAllCategoriesService, getCategoryByIdService, updateCategoryService } from "../services/categoryService";
+import { createCategoryService, deleteAllCategoriesService, deleteCategoryService, getAllCategoriesService, getCategoryByIdService, updateCategoryService } from "../services/categoryService";
 import { Messages } from "../utils/constants";
 import { failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
@@ -76,3 +76,18 @@ export const deleteCategory = async (req: Request, res: Response) => {
         return;
     }
 }
+
+export const deleteAllCategories = async (req: Request, res: Response) => {
+    try {
+        const result = await deleteAllCategoriesService();
+
+        successResponse(
+            res,
+            result,
+            Messages.Category_ALL_Deleted,
+            StatusCode.OK
+        );
+    } catch (err: any) {
+        failResponse(res, err?.message || err, StatusCode.Bad_Request);
+    }
+};

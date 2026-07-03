@@ -45,3 +45,12 @@ export const deleteCategoryService = async (id: string) => {
         throw new Error(err?.message || err);
     }
 }
+
+export const deleteAllCategoriesService = async () => {
+    try {
+        const result = await Category.deleteMany({});
+        return result;
+    } catch (err: any) {
+        throw new Error(err?.message || err);
+    }
+};
