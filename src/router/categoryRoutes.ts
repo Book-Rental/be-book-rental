@@ -7,10 +7,10 @@ import { createCategory, deleteCategory, getAllCategories, getCategoryById, upda
 const router = Router();
 
 // Define routes
-router.get('/', auth as any, getAllCategories);
-router.get('/:id', auth as any, getCategoryById);
-router.post('/create', auth as any, createCategory);
-router.put('/:id', auth as any, updateCategory);
-router.delete('/:id', auth as any, deleteCategory);
+router.get('/', getAllCategories);
+router.get('/:id', getCategoryById);
+router.post('/create', createCategory);
+router.put('/:id', updateCategory);
+router.delete('/:id', deleteCategory);
 
 export default router;
