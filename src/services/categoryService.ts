@@ -9,14 +9,17 @@ export const createCategoryService = async (categoryData: ICategory) => {
     }
 }
 
-export const getAllCategoriesService = async () => {
+export const getAllCategoriesService = async (isPopular?: boolean | string) => {
     try {
-        return Category.find();
+        // Build the filter object based on the incoming value
+        const filter = isPopular === true || isPopular === 'true' ? { isPopular: true } : {};
+        
+        // Pass the filter into the find method
+        return await Category.find(filter);
     } catch (err: any) {
         throw new Error(err?.message || err);
     }
-
-}
+};
 
 export const getCategoryByIdService = async (id: string) => {
     try {

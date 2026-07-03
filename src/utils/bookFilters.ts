@@ -1,41 +1,85 @@
 import mongoose, { FilterQuery, Types } from 'mongoose';
 import { IBook } from '../models/Book';
+import Category from '../models/Category';
 
 // Function to build the filter object
-export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
+export const buildFilter = async (
+  query: any
+): Promise<FilterQuery<IBook>> => {
   const filter: FilterQuery<IBook> = {};
+
   try {
-    const { categoryID, name, minPrice, maxPrice, isPopular } = query;
+    const {
+      categoryID,
+      categoryName,
+      name,
+      minPrice,
+      maxPrice,
+      isPopular,
+      isAvailable,
+    } = query;
 
-    console.log("category, name, minPrice, maxPrice, isPopular :::", categoryID, name, minPrice, maxPrice, isPopular);
+    console.log('Query:', query);
 
+    // Filter by Category ID
     if (categoryID && Types.ObjectId.isValid(categoryID)) {
       filter.categoryId = new Types.ObjectId(categoryID);
     }
 
+    // Filter by Category Name
+    if (categoryName) {
+      const category = await Category.findOne({
+        name: {
+          $regex: categoryName,
+          $options: 'i',
+        },
+      });
+
+      if (category) {
+        filter.categoryId = category._id;
+      } else {
+        // No category found -> return no books
+        filter.categoryId = new Types.ObjectId();
+      }
+    }
+
+    // Search by Book Name
     if (name) {
       let queryName = name.replace(/%(?![0-9A-Fa-f]{2})/g, '%25');
       queryName = decodeURIComponent(queryName);
-      filter.name = { $regex: queryName, $options: 'i' };
+
+      filter.name = {
+        $regex: queryName,
+        $options: 'i',
+      };
     }
 
-    // Filter by book purchase price range
+    // Price Range
     if (minPrice || maxPrice) {
       filter.purchasePrice = {};
-      if (minPrice) filter.purchasePrice.$gte = parseFloat(minPrice as string);
-      if (maxPrice) filter.purchasePrice.$lte = parseFloat(maxPrice as string);
+
+      if (minPrice)
+        filter.purchasePrice.$gte = parseFloat(minPrice);
+
+      if (maxPrice)
+        filter.purchasePrice.$lte = parseFloat(maxPrice);
     }
 
-    // Is Popular 
-    if (isPopular) {
-      filter.isPopular = (isPopular === "true");
+    // Popular
+    if (isPopular !== undefined) {
+      filter.isPopular = isPopular === 'true';
     }
 
-    console.log('filter', filter);
+    // Available
+    if (isAvailable !== undefined) {
+      filter.isAvailable = isAvailable === 'true';
+    }
+
+    console.log('Final Filter:', filter);
+
     return filter;
-
   } catch (err) {
-    console.log('Filter Query Err', err);
+    console.log('Filter Query Error:', err);
     return filter;
   }
 };
@@ -113,11 +157,14 @@ export const buildBookAggregationPipeline = async (
         numberOfPages: 1,
         publicationDate: 1,
         isPopular: 1,
+        isAvailable: 1,
+        availabilityStatus: 1,
+        isActive: 1,
+        status: 1,
         createdAt: 1,
         category: {
           id: '$categoryDetails._id',
           name: '$categoryDetails.name',
-          description: '$categoryDetails.description',
         }
       },
     },
