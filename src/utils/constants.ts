@@ -7,6 +7,7 @@ export const Messages = {
     User_Deleted: "User Deleted successfully!",
     User_Created: "User Created successfully!",
     User_Not_Available: "User Not Available",
+    Password_Not_Matched: "Invalid Password ",
     Unauthorized_User: "Unauthorized",
     Duplicate_Email: "Duplicate Email",
     UserAuthenticated: "User Authenticated successfully!",
