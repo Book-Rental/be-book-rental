@@ -13,7 +13,7 @@ app.use(cors({
     origin: [
         'http://localhost:3000',  
         "http://localhost:5173",
-        "https://apigateway-kl70.onrender.com"
+        "https://fe-book-rental-host.onrender.com"
     ], 
     credentials: true
 }
