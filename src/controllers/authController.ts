@@ -17,7 +17,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
         const credentials = req.body as { email: string, password: string };
         const userInfo: IUser | any = await loginService(credentials?.email);
-        
+
         if (!userInfo) {
             failResponse(res, Messages.User_Not_Available, StatusCode.Not_Found);
             return;
@@ -25,7 +25,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         if (userInfo?.password) {
             const password = await comparePasswords(credentials.password, userInfo.password);
             if (!password) {
-                failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+                failResponse(res, Messages.Password_Not_Matched, StatusCode.Unauthorized);
                 return;
             }
         } else {
