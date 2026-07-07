@@ -9,6 +9,7 @@ import { JWT_TOKEN_NAME, Messages } from "../utils/constants";
 import { validationResult } from "express-validator";
 import { generateToken } from "../utils/jwt";
 import { comparePasswords } from "../utils/passwordValidation";
+const isProd = process.env.NODE_ENV === 'production';
 
 
 // POST login user
@@ -35,8 +36,9 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         const token = await generateToken(userInfo);
         res.cookie(`${JWT_TOKEN_NAME}`, token, {
             httpOnly: true,
-            secure: true, // Only on HTTPS in production
-            sameSite: 'none'
+            secure: isProd, 
+            sameSite: isProd ? 'none' : 'lax',
+            maxAge: 24 * 60 * 60 * 1000
         });
         successResponse(res, { userInfo, token }, Messages.UserAuthenticated, StatusCode.OK);
     } catch (err: any) {
