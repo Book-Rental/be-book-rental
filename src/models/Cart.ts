@@ -1,6 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-
-
+import { Messages } from "../utils/constants";
 export type PricingMode = "rent" | "sale";
 export type RentalPeriod = "day" | "week" | "month";
 
@@ -25,14 +24,14 @@ const cartItemSchema = new Schema<ICartItem>(
     bookId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Book",
-      required: [true, "Book ID is required"],
+      required: [true, Messages.BookId_Required],
     },
 
     quantity: {
       type: Number,
       required: true,
       default: 1,
-      min: [1, "Quantity must be at least 1"],
+      min: [1, Messages.Quantity_Must_Be_At_Least_One],
     },
     pricingMode: {
       type: String,
@@ -58,7 +57,7 @@ const cartSchema = new Schema<ICart>(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: [true, "User ID is required"],
+      required: [true, Messages.User_Id_Required],
       unique: true,
     },
     items: [cartItemSchema],

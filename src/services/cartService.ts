@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Cart from "../models/Cart";
 import Book from "../models/Book";
 import { computeCartTotals } from "../utils/cartTotals";
+import { Messages } from "../utils/constants";
 
 const BOOK_POPULATE = {
   path: "items.bookId",
@@ -26,7 +27,7 @@ const getPopulatedCartWithSummary = async (
 
 export const getCartByUserIdService = async (userId: string) => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
-    throw new Error("Invalid userId");
+    throw new Error(Messages.Invalid_UserId);
   }
 
   const cart = await Cart.findOne({ userId })
@@ -55,14 +56,14 @@ export const addItemToCartService = async (
   rentalPeriod?: "day" | "week" | "month"
 ) => {
   if (!mongoose.Types.ObjectId.isValid(userId))
-    throw new Error("Invalid userId");
+    throw new Error(Messages.Invalid_UserId);
 
   if (!mongoose.Types.ObjectId.isValid(bookId))
-    throw new Error("Invalid bookId");
+    throw new Error(Messages.Invalid_BookId);
 
   const bookExists = await Book.findById(bookId).select("_id");
 
-  if (!bookExists) throw new Error("Book not found");
+  if (!bookExists) throw new Error(Messages.Book_Not_Found);
 
   let cart = await Cart.findOne({ userId });
 
@@ -115,21 +116,21 @@ export const updateCartItemQuantityService = async (
   rentalPeriod?: "day" | "week" | "month"
 ) => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
-    throw new Error("Invalid userId");
+    throw new Error(Messages.Invalid_UserId);
   }
 
   if (!mongoose.Types.ObjectId.isValid(bookId)) {
-    throw new Error("Invalid bookId");
+    throw new Error(Messages.Invalid_BookId);
   }
 
   if (quantity < 1) {
-    throw new Error("Quantity must be at least 1");
+    throw new Error(Messages.Quantity_Must_Be_At_Least_One);
   }
 
   const cart = await Cart.findOne({ userId });
 
   if (!cart) {
-    throw new Error("Cart not found");
+    throw new Error(Messages.Cart_Not_Found);
   }
 
   const existingItem = cart.items.find(
@@ -140,7 +141,7 @@ export const updateCartItemQuantityService = async (
   );
 
   if (!existingItem) {
-    throw new Error("Cart item not found");
+    throw new Error(Messages.Cart_Item_Not_Found);
   }
 
   existingItem.quantity = quantity;
@@ -157,17 +158,17 @@ export const removeItemFromCartService = async (
   rentalPeriod?: "day" | "week" | "month"
 ) => {
   if (!mongoose.Types.ObjectId.isValid(userId)) {
-    throw new Error("Invalid userId");
+    throw new Error(Messages.Invalid_UserId);
   }
 
   if (!mongoose.Types.ObjectId.isValid(bookId)) {
-    throw new Error("Invalid bookId");
+    throw new Error(Messages.Invalid_BookId);
   }
 
   const cart = await Cart.findOne({ userId });
 
   if (!cart) {
-    throw new Error("Cart not found");
+    throw new Error(Messages.Cart_Not_Found);
   }
 
   const initialLength = cart.items.length;
@@ -182,7 +183,7 @@ export const removeItemFromCartService = async (
   );
 
   if (cart.items.length === initialLength) {
-    throw new Error("Cart item not found");
+    throw new Error(Messages.Cart_Item_Not_Found);
   }
 
   await cart.save();
@@ -192,7 +193,7 @@ export const removeItemFromCartService = async (
 
 export const clearCartService = async (userId: string) => {
   if (!mongoose.Types.ObjectId.isValid(userId))
-    throw new Error("Invalid userId");
+    throw new Error(Messages.Invalid_UserId);
 
   const cart = await Cart.findOne({ userId });
 
