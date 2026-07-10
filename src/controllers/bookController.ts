@@ -9,7 +9,7 @@ import { createBookService, deleteBookByIdService, getBookByIdService, updateBoo
 
 export const getAllBooks = async (req: Request, res: Response) => {
     try {
-        const { sortBy, page = 1, limit = 10, ...filterQuery } = req.query;
+        const { sortBy, page = 1, limit = 12, ...filterQuery } = req.query;
         // Build the aggregation pipeline with the updated filters
         const pipeline = await buildBookAggregationPipeline(
             filterQuery,
