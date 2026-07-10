@@ -31,6 +31,7 @@ export const buildWishlistBooksAggregationPipeline = (
         description: "$book.description",
         price: "$book.purchasePrice",
         coverImage: "$book.coverImage",
+        author: "$book.author",
       },
     },
     { $skip: skip },

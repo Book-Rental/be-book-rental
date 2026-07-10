@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Wishlist, { IWishlistGroup } from "../models/WishList";
 import { buildWishlistFilter } from "../utils/buildWishlistFilter";
 import { buildWishlistBooksAggregationPipeline } from "../utils/buildWishlistBooksAggregationPipeline";
+import { auth } from "../middlewares/authMiddleware";
 
 export const getWishlistsByUserService = async (
   userId: string,
@@ -11,7 +12,7 @@ export const getWishlistsByUserService = async (
     const {
       wishListID,
       page = 1,
-      limit = 10,
+      limit = 5,
     } = query;
 
     const pageNumber = Number(page);
@@ -52,6 +53,7 @@ export const getWishlistsByUserService = async (
         description: book.description,
         price: book.price,
         coverImage: book.coverImage,
+        author: book.author,
       })),
       meta: {
         totalRecords,
@@ -79,7 +81,7 @@ export const createWishlistGroupService = async (
 
     const existingWishlist = await Wishlist.findOne({
       userId: new mongoose.Types.ObjectId(userId),
-      name: name.trim(),
+      name: name.trim().toLowerCase(),
     });
 
     if (existingWishlist) {
@@ -103,12 +105,12 @@ export const createWishlistGroupService = async (
 };
 
 export const addBookToWishlistService = async (
-  
+
   wishlistId: string,
   bookId: string,
 ): Promise<IWishlistGroup | null> => {
   try {
-   
+
 
     if (!mongoose.Types.ObjectId.isValid(wishlistId)) {
       throw new Error("Invalid wishlist id.");
@@ -125,7 +127,7 @@ export const addBookToWishlistService = async (
     // Check whether wishlist exists
     const wishlist = await Wishlist.findOne({
       _id: wId,
-     
+
     });
 
     if (!wishlist) {
@@ -160,12 +162,12 @@ export const addBookToWishlistService = async (
 };
 
 export const removeBookFromWishlistService = async (
-  
+
   wishlistId: string,
   bookId: string,
 ): Promise<IWishlistGroup | null> => {
   try {
- 
+
     if (!mongoose.Types.ObjectId.isValid(wishlistId)) {
       throw new Error("Invalid wishlist id.");
     }
@@ -174,7 +176,6 @@ export const removeBookFromWishlistService = async (
       throw new Error("Invalid book id.");
     }
 
-  
     const wId = new mongoose.Types.ObjectId(wishlistId);
     const bId = new mongoose.Types.ObjectId(bookId);
 
@@ -241,5 +242,42 @@ export const getUserWishlistNamesService = async (
     throw error instanceof Error
       ? error
       : new Error("Failed to fetch wishlist names.");
+  }
+};
+
+
+export const getUserWishlistsWithBooksService = async (
+  userId: string,
+) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user id.");
+    }
+
+    const wishlists = await Wishlist.find({
+      userId: new mongoose.Types.ObjectId(userId),
+    })
+      .populate({
+        path: "items.bookId",
+        select:
+          "_id ",
+      })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    return wishlists.map((wishlist: any) => ({
+      wishlistId: wishlist._id,
+      wishlistName: wishlist.name,
+      books: wishlist.items.map((item: any) => ({
+        bookId: item.bookId?._id,
+
+      })),
+    }));
+  } catch (error) {
+    console.error("Error fetching wishlists:", error);
+
+    throw error instanceof Error
+      ? error
+      : new Error("Failed to fetch wishlists.");
   }
 };

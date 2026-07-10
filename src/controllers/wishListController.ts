@@ -3,6 +3,7 @@ import {
   addBookToWishlistService,
   createWishlistGroupService,
   getUserWishlistNamesService,
+  getUserWishlistsWithBooksService,
   getWishlistsByUserService,
   removeBookFromWishlistService,
 } from "../services/wishListService";
@@ -216,6 +217,39 @@ export const getUserWishlistNames = async (
       error instanceof Error
         ? error.message
         : "Failed to fetch wishlist names.",
+    );
+  }
+};
+
+
+export const getUserWishlistsWithBooks = async (
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> => {
+  try {
+    const { userId } = req.params as { userId: string };
+
+    if (!userId) {
+      failResponse(res, "User Id is required.", 400);
+      return;
+    }
+
+    const wishlists = await getUserWishlistsWithBooksService(userId);
+
+    successResponse(
+      res,
+      wishlists,
+      "Wishlists fetched successfully.",
+      200,
+    );
+  } catch (error) {
+    console.error("Get Wishlists Error:", error);
+
+    errorResponse(
+      res,
+      error instanceof Error
+        ? error.message
+        : "Failed to fetch wishlists.",
     );
   }
 };
