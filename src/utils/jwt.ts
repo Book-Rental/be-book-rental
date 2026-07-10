@@ -15,7 +15,7 @@ export const verifyToken = async (token: string) => {
     if (process.env.ENABLEJWT === "true") {
         return await jwt.verify(token, process.env.JWT_SECRET);
     }
-    return true;
+    return tokenDetail;
 };
 
 
