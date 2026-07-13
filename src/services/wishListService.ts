@@ -54,6 +54,9 @@ export const getWishlistsByUserService = async (
         price: book.price,
         coverImage: book.coverImage,
         author: book.author,
+        rentalPricePerDay: book.rentalPricePerDay,
+        rentalPricePerWeek:book.rentalPricePerWeek,
+        rentalPricePerMonth: book.rentalPricePerMonth,
       })),
       meta: {
         totalRecords,
@@ -225,17 +228,34 @@ export const getUserWishlistNamesService = async (
       throw new Error("Invalid user id.");
     }
 
-    const wishlists = await Wishlist.find({
-      userId: new mongoose.Types.ObjectId(userId),
-    })
-      .select("_id name")
-      .sort({ name: 1 })
-      .lean();
+    const wishlists = await Wishlist.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+        },
+      },
+      {
+        $addFields: {
+          hasProducts: {
+            $gt: [{ $size: "$items" }, 0],
+          },
+        },
+      },
+      {
+        $sort: {
+          hasProducts: -1, // Wishlists with products first
+          name: 1,         // Then sort alphabetically
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+        },
+      },
+    ]);
 
-    return wishlists.map((wishlist: any) => ({
-      _id: wishlist._id,
-      name: wishlist.name,
-    }));
+    return wishlists;
   } catch (error) {
     console.error("Error fetching wishlist names:", error);
 
@@ -244,7 +264,6 @@ export const getUserWishlistNamesService = async (
       : new Error("Failed to fetch wishlist names.");
   }
 };
-
 
 export const getUserWishlistsWithBooksService = async (
   userId: string,
