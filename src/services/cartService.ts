@@ -7,7 +7,7 @@ import { Messages } from "../utils/constants";
 const BOOK_POPULATE = {
   path: "items.bookId",
   select:
-    "name description coverImage rentalPricePerDay rentalPricePerWeek rentalPricePerMonth purchasePrice securityDeposit",
+    "name author description coverImage rentalPricePerDay rentalPricePerWeek rentalPricePerMonth purchasePrice securityDeposit",
 };
 
 const getPopulatedCartWithSummary = async (

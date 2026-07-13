@@ -25,7 +25,9 @@ export const getCart = async (req: AuthenticatedRequest, res: Response) => {
     if (!userId) return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
 
     const cart = await getCartByUserIdService(userId);
-    return successResponse(res, cart ?? { userId, items: [] }, Messages.Cart_Fetched, StatusCode.OK);
+    const cartData = cart ?? { userId, items: [] };
+
+    return successResponse(res, cartData, Messages.Cart_Fetched, StatusCode.OK);
   } catch (err: any) {
     return failResponse(res, err?.message || Messages.Cart_Fetch_Failed, StatusCode.Bad_Request);
   }
