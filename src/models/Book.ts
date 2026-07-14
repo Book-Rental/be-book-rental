@@ -31,6 +31,7 @@ export interface IBook extends IBasicFields {
     isPopular?: boolean;
     images?: Image[];
     isAvailable?: boolean;
+    quantity: number; 
 }
 
 const bookSchema = new Schema<IBook>(
@@ -105,6 +106,11 @@ const bookSchema = new Schema<IBook>(
             required: true,
             type: String,
             enum: ['sale', 'rent', 'both']
+        },
+        quantity:{
+            required: true,
+            type: Number,
+            min: 1
         },
         condition: {
             required: true,
