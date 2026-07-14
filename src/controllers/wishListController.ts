@@ -27,7 +27,7 @@ export const getUserWishlists = async (
 ): Promise<void> => {
   try {
     const { userId } = req.params as { userId: string };
-    console.log("Fetching wishlists for userId:", userId);
+    
     if (!userId) {
       failResponse(res, "User Id is required.", 400);
       return;

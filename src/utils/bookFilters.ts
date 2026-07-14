@@ -94,11 +94,14 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
 
     // Language Filter
     if (language?.trim()) {
-      filter.language = {
-        $in: language
-          .split(",")
-          .map((lang: string) => new RegExp(`^${lang.trim()}$`, "i")),
-      };
+      // If the user passes "all", do not apply any language filter (returns all data)
+      if (language.trim().toLowerCase() !== "all") {
+        filter.language = {
+          $in: language
+            .split(",")
+            .map((lang: string) => new RegExp(`^${lang.trim()}$`, "i")),
+        };
+      }
     }
 
     // Purchase Price
@@ -131,7 +134,7 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
       filter.availableForRent = availableForRent === "true";
     }
 
-    console.log("Final Filter:", filter);
+ 
 
     return filter;
   } catch (err) {
@@ -202,6 +205,7 @@ export const buildBookAggregationPipeline = async (
         edition: 1,
         coverImage: 1,
         images: 1,
+        quantity: 1,
         purchasePrice: 1,
         rentalPricePerDay: 1,
         rentalPricePerWeek: 1,
@@ -224,6 +228,7 @@ export const buildBookAggregationPipeline = async (
           id: "$categoryDetails._id",
           name: "$categoryDetails.name",
         },
+
       },
     },
 

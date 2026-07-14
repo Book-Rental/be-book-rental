@@ -134,7 +134,7 @@ export const getUserByIdService = async (id: string) => {
     try {
         const selectedFields = `email userType lastName firstName status addresses isVerified profilePic deliveryStatus maxConcurrentOrders currentOrderIds currentLocation`
         const user = await User.findOne({ _id: id }, selectedFields);
-        console.log('user');
+       
         return user;
     } catch (err) {
         return err;
