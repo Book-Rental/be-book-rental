@@ -89,6 +89,7 @@ export const Messages = {
     Book_Images_Updated_Successfully: "Book images updated successfully",
     Book_Images_Required: "Book images are required",
     Book_Images_Too_Many: "Too many images. Maximum allowed is 5",
+    Book_Inactive: "Book is not active",
 
     // =========================
     // Cart
@@ -98,6 +99,7 @@ export const Messages = {
     Cart_Item_Added: "Item added to cart",
     Cart_Item_Removed: "Item removed from cart",
     Cart_Item_Updated: "Cart item quantity updated",
+    Cart_Valid: "Cart validated",
 
     Cart_Fetch_Failed: "Failed to fetch cart",
     Cart_Add_Item_Failed: "Failed to add item to cart",
@@ -114,6 +116,7 @@ export const Messages = {
     Quantity_Must_Be_At_Least_One: "Quantity must be at least 1",
     Quantity_Invalid: "Quantity must be a valid number >= 0",
     Quantity_Minimum_One: "Quantity must be >= 1",
+    Insufficient_Quantity: "Insufficient inventory for reserved cart quantity",
 
     // =========================
     // Orders
