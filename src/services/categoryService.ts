@@ -3,7 +3,7 @@ import { ICategory } from "../models/interfaces";
 
 export const createCategoryService = async (categoryData: ICategory) => {
     try {
-        return Category.create(categoryData);
+        return await Category.create(categoryData);
     } catch (err: any) {
         throw new Error(err?.message || err);
     }
@@ -13,7 +13,7 @@ export const getAllCategoriesService = async (isPopular?: boolean | string) => {
     try {
         // Build the filter object based on the incoming value
         const filter = isPopular === true || isPopular === 'true' ? { isPopular: true } : {};
-        
+
         // Pass the filter into the find method
         return await Category.find(filter);
     } catch (err: any) {
@@ -23,7 +23,7 @@ export const getAllCategoriesService = async (isPopular?: boolean | string) => {
 
 export const getCategoryByIdService = async (id: string) => {
     try {
-        return Category.findById(id);
+        return await Category.findById(id);
     } catch (err: any) {
         throw new Error(err?.message || err);
     }

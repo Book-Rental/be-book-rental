@@ -1,67 +1,126 @@
 import mongoose, { Schema, model } from "mongoose";
+import bcrypt from "bcrypt";
 import { IUser, Status, UserType } from "./interfaces";
 
-const bcrypt = require('bcrypt');
+/**
+ * GeoJSON Location Schema
+ */
+const locationSchema = new Schema(
+  {
+    type: {
+      type: String,
+      enum: ["Point"],
+      required: true,
+      default: "Point",
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      required: true,
+      validate: {
+        validator: function (value: number[]) {
+          return (
+            Array.isArray(value) &&
+            value.length === 2 &&
+            typeof value[0] === "number" &&
+            typeof value[1] === "number"
+          );
+        },
+        message:
+          "Coordinates must contain exactly [longitude, latitude].",
+      },
+    },
+  },
+  {
+    _id: false,
+  }
+);
 
+/**
+ * Address Schema
+ */
 const addressSchema = new Schema(
   {
-    // optional label + type for UI
-    name: { type: String, required: false },
+    name: {
+      type: String,
+      trim: true,
+    },
+
     type: {
       type: String,
       enum: ["home", "work", "other"],
       default: "home",
     },
 
-    // Map your interface fields
-    street: { type: String, required: true },
-    city: { type: String, required: true },
-    state: { type: String, required: true },
-    zipCode: { type: String, required: true }, // interface zipCode
-    country: { type: String, required: true },
+    street: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
-    // GeoJSON location
-    location: {
-      type: {
-        type: String,
-        enum: ["Point"],
-        required: true,
-        default: "Point",
-      },
-      coordinates: {
-        type: [Number], // [lng, lat]
-        required: true,
-      },
+    city: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    state: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    zipCode: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    country: {
+      type: String,
+      required: true,
+      trim: true,
     },
 
     phone: {
       type: String,
       required: true,
-      minlength: [10, "Phone number must be at least 10 digits long"],
-      maxlength: [15, "Phone number cannot exceed 15 digits"],
+      minlength: 10,
+      maxlength: 15,
       validate: {
-        validator: function (v: string) {
-          return /^\d+$/.test(v);
+        validator: function (value: string) {
+          return /^\d+$/.test(value);
         },
-        message: (props: any) =>
-          `${props?.value} is not a valid phone number! Phone number should contain only digits.`,
+        message: "Phone number should contain only digits.",
       },
     },
 
-    isDefault: { type: Boolean, default: false },
+    location: {
+      type: locationSchema,
+      required: true,
+    },
+
+    isDefault: {
+      type: Boolean,
+      default: false,
+    },
   },
-  { _id: false }
+  {
+    _id: true,
+    timestamps: true,
+  }
 );
 
-
+/**
+ * User Schema
+ */
 const userSchema = new Schema<IUser>(
   {
     email: {
       type: String,
       required: true,
       unique: true,
-      trim: true,
       lowercase: true,
+      trim: true,
     },
 
     firstName: {
@@ -88,7 +147,9 @@ const userSchema = new Schema<IUser>(
       required: true,
     },
 
-    profilePic: String,
+    profilePic: {
+      type: String,
+    },
 
     addresses: {
       type: [addressSchema],
@@ -100,7 +161,9 @@ const userSchema = new Schema<IUser>(
       default: false,
     },
 
-    tokenCreatedAt: Date,
+    tokenCreatedAt: {
+      type: Date,
+    },
 
     hashedToken: {
       type: String,
@@ -138,22 +201,45 @@ const userSchema = new Schema<IUser>(
   }
 );
 
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next(); // Skip if password is not modified
-  const saltRounds = +`${process.env.PASSWORD_SALT}`;
+/**
+ * Geo Index
+ */
+userSchema.index({
+  "addresses.location": "2dsphere",
+});
+
+/**
+ * Hash password before save
+ */
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
+
+  const saltRounds = Number(process.env.PASSWORD_SALT) || 10;
+
   this.password = await bcrypt.hash(this.password, saltRounds);
+
   next();
 });
 
-userSchema.pre(['findOneAndUpdate', 'updateOne'], async function (next) {
-  const update = this.getUpdate() as any;
-  const password = update?.$set?.password;
-  if (password) {
-    const salt = await bcrypt.genSalt(+`${process.env.PASSWORD_SALT}`);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    this.set({ password: hashedPassword });
+/**
+ * Hash password before update
+ */
+userSchema.pre(["findOneAndUpdate", "updateOne"], async function (next) {
+  const update: any = this.getUpdate();
+
+  if (update?.$set?.password) {
+    const saltRounds = Number(process.env.PASSWORD_SALT) || 10;
+
+    update.$set.password = await bcrypt.hash(
+      update.$set.password,
+      saltRounds
+    );
   }
-  this.set({ updatedAt: new Date() });
+
+  this.set({
+    updatedAt: new Date(),
+  });
+
   next();
 });
 

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getAllUsersService, createUserService, deleteUserService, updateUserService, getUserByIdService, updateUserAddressService, deleteUserAddressService, } from '../services/userService';
+import { getAllUsersService, createUserService, deleteUserService, updateUserService, getUserByIdService, updateUserAddressService, deleteUserAddressService, addUserAddressService, getAddressByIdService, getUserAddressesService, } from '../services/userService';
 import { IUser } from '../models/interfaces';
 import { failResponse, successResponse } from '../utils/response';
 import { StatusCode } from '../utils/StatusCodes';
@@ -70,7 +70,7 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
       failResponse(res, newUser?.message, StatusCode.Bad_Request)
       return;
     }
-    successResponse(res, { }, Messages.User_Deleted, StatusCode.OK);
+    successResponse(res, {}, Messages.User_Deleted, StatusCode.OK);
   } catch (error: any) {
     failResponse(res, error?.message || error, StatusCode.Bad_Request)
   }
@@ -150,53 +150,225 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
   }
 }
 
-//Update the User Address 
-export const updateUserAddress = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { userId } = req.params;
-    const newAddress = req.body;
-    if (!userId) {
-      failResponse(res, Messages.UserId_Required_To_Update_Address, StatusCode.Bad_Request)
-      return;
-    }
-    if (!newAddress?.id) {
-      failResponse(res, Messages.AddressId_Required_To_Update_Address, StatusCode.Bad_Request)
-      return;
-    }
 
-    if (newAddress) {
-      Object.keys(newAddress).forEach((key) => {
-        if (!UserAddressFields.includes(key)) {
-          delete newAddress[key];
-        }
-      });
-    }
-
-    const userAddressUpdated = await updateUserAddressService(userId, newAddress);
-    successResponse(res, newAddress, Messages.Address_Updated, StatusCode.OK);
-  } catch (err: any) {
-    failResponse(res, err?.message || err, StatusCode.Bad_Request)
-  }
-}
-
-// Delete the  User Address
-export const deleteUserAddress = async (req: Request, res: Response): Promise<void> => {
+/**
+ * Add Address
+ */
+export const addUserAddress = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { userId } = req.params as { userId: string };
-    const { id } = req.body;
+
     if (!userId) {
-      failResponse(res, Messages.UserId_Required_To_Delete_Address, StatusCode.Bad_Request)
-      return;
-    }
-    if (!id) {
-      failResponse(res, Messages.AddressId_Required_To_Update_Address, StatusCode.Bad_Request)
+      failResponse(
+        res,
+        Messages.UserId_Required,
+        StatusCode.Bad_Request
+      );
       return;
     }
 
-    const userAddressUpdated = await deleteUserAddressService(userId, id);
-    successResponse(res, { id }, Messages.Address_Deleted, StatusCode.OK);
+    const result = await addUserAddressService(
+      userId,
+      req.body
+    );
+
+    successResponse(
+      res,
+      result,
+      Messages.Address_Added,
+      StatusCode.Created
+    );
   } catch (err: any) {
-    failResponse(res, err?.message || err, StatusCode.Bad_Request)
+    failResponse(
+      res,
+      err.message || "Unable to add address.",
+      StatusCode.Bad_Request
+    );
   }
-}
+};
 
+/**
+ * Update Address
+ */
+export const updateUserAddress = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId, addressId } = req.params  as { userId: string, addressId: string };
+
+    if (!userId) {
+      failResponse(
+        res,
+        Messages.UserId_Required_To_Update_Address,
+        StatusCode.Bad_Request
+      );
+      return;
+    }
+
+    if (!addressId) {
+      failResponse(
+        res,
+        Messages.AddressId_Required_To_Update_Address,
+        StatusCode.Bad_Request
+      );
+      return;
+    }
+
+    const result = await updateUserAddressService(
+      userId,
+      addressId,
+      req.body
+    );
+
+    successResponse(
+      res,
+      result,
+      Messages.Address_Updated,
+      StatusCode.OK
+    );
+  } catch (err: any) {
+    failResponse(
+      res,
+      err.message || "Unable to update address.",
+      StatusCode.Bad_Request
+    );
+  }
+};
+
+/**
+ * Delete Address
+ */
+export const deleteUserAddress = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId, addressId } = req.params as { userId: string, addressId: string };
+
+    if (!userId) {
+      failResponse(
+        res,
+        Messages.UserId_Required_To_Delete_Address,
+        StatusCode.Bad_Request
+      );
+      return;
+    }
+
+    if (!addressId) {
+      failResponse(
+        res,
+        Messages.AddressId_Required_To_Delete_Address,
+        StatusCode.Bad_Request
+      );
+      return;
+    }
+
+    await deleteUserAddressService(
+      userId,
+      addressId
+    );
+
+    successResponse(
+      res,
+      {},
+      Messages.Address_Deleted,
+      StatusCode.OK
+    );
+  } catch (err: any) {
+    failResponse(
+      res,
+      err.message || "Unable to delete address.",
+      StatusCode.Bad_Request
+    );
+  }
+};
+
+/**
+ * Get All Addresses
+ */
+export const getUserAddresses = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId } = req.params as { userId: string };
+
+    if (!userId) {
+      failResponse(
+        res,
+        Messages.UserId_Required,
+        StatusCode.Bad_Request
+      );
+      return;
+    }
+
+    const result = await getUserAddressesService(
+      userId
+    );
+
+    successResponse(
+      res,
+      result,
+      Messages.Success,
+      StatusCode.OK
+    );
+  } catch (err: any) {
+    failResponse(
+      res,
+      err.message || "Unable to fetch addresses.",
+      StatusCode.Bad_Request
+    );
+  }
+};
+
+/**
+ * Get Address By Id
+ */
+export const getAddressById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId, addressId } = req.params as { userId: string, addressId: string };
+
+    if (!userId) {
+      failResponse(
+        res,
+        Messages.UserId_Required,
+        StatusCode.Bad_Request
+      );
+      return;
+    }
+
+    if (!addressId) {
+      failResponse(
+        res,
+        "Address Id is required.",
+        StatusCode.Bad_Request
+      );
+      return;
+    }
+
+    const result = await getAddressByIdService(
+      userId,
+      addressId
+    );
+
+    successResponse(
+      res,
+      result,
+      Messages.Success,
+      StatusCode.OK
+    );
+  } catch (err: any) {
+    failResponse(
+      res,
+      err.message || "Unable to fetch address.",
+      StatusCode.Bad_Request
+    );
+  }
+};

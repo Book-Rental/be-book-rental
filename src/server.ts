@@ -1,29 +1,34 @@
-require('dotenv').config(); // Load environment variables from .env
-const app = require('./app');
-const http = require('http');
+require("dotenv").config();
 
-const connetDataBase = require('./config/db');
-const mongoose = require("mongoose");
-const server = http.createServer(app);
+import app from "./app";
+import connectDatabase from "./config/db";
 
-// Start server on the specified port
-const PORT = process.env.PORT || 5000;
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+import http from "http";
+import mongoose from "mongoose";
+export const server = http.createServer(app);
 
-connetDataBase()
-  .then((res: any) => {
+export const PORT = process.env.PORT || 5000;
+
+export const startServer = async () => {
+  try {
+    await connectDatabase();
+
     server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`)
+      console.log(`Server running on port ${PORT}`);
     });
-  })
-  .catch((err: any) => {
+  } catch (err) {
     console.log("err", err);
     process.exit(1);
-  });
+  }
+};
+
+if (process.env.NODE_ENV !== "test") {
+  startServer();
+}
 
 process.on("SIGINT", async () => {
   try {
-    await mongoose?.connection?.close();
+    await mongoose.connection.close();
     console.log("MongoDB connection closed");
     process.exit(0);
   } catch (err) {
@@ -31,5 +36,3 @@ process.on("SIGINT", async () => {
     process.exit(1);
   }
 });
-
-export { };

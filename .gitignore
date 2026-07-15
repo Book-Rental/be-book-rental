@@ -13,6 +13,7 @@ dist-ssr
 *.local
 .vite
 .env
+coverage
 
 # Editor directories and files
 .vscode/*
