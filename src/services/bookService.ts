@@ -1,13 +1,6 @@
 import { Request, Response } from "express";
 import Book, { IBook } from "../models/Book";
 
-export const getAllBooks = async () => {
-    try {
-
-    } catch (err) {
-        throw err
-    }
-}
 
 
 export const createBookService = async (data: Partial<IBook>) => {

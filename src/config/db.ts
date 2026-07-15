@@ -1,13 +1,20 @@
-const mongoose = require("mongoose");
-
+import mongoose from "mongoose";
 const connetDataBase = async (): Promise<any> => {
   console.log('MangoDB connecting....');
   try {
     mongoose?.connection?.close();
-    const clientOptions = { serverApi: { version: '1', strict: true, deprecationErrors: true }, family: 4, };
-    await mongoose.connect(`${process.env.MONGO_URL}${process.env.DATABASE}?retryWrites=true&w=majority`,clientOptions);
+    const clientOptions: mongoose.ConnectOptions = {
+      serverApi: { version: '1' as '1', strict: true, deprecationErrors: true },
+      family: 4,
+    };
+
+    await mongoose.connect(
+      `${process.env.MONGO_URL}${process.env.DATABASE}?retryWrites=true&w=majority`,
+      clientOptions
+    );
   } catch (err) {
-   console.error('error',err)
+    console.error(err);
+     throw err;
   }
 };
 
@@ -21,9 +28,8 @@ mongoose.connection.on('disconnected', () => {
   console.log('Mongoose disconnected');
 });
 
-mongoose.connection.on('error', (err:any) => {
+mongoose.connection.on('error', (err: any) => {
   console.log('Error in MongoDB connection:', err);
 });
 
-
-module.exports = connetDataBase;
+export default connetDataBase;

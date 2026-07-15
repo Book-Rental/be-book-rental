@@ -146,6 +146,11 @@ export const Messages = {
     // =========================
     Email_Verified: "Email verified successfully!",
     Invalid_Email_Verification_Token: "Token is invalid or has expired.",
+
+
+    //Address 
+    UserId_Required: "UserId is required",
+    Address_Added: "Address added successfully",
 };
 
 export const EmailSubjects = {
