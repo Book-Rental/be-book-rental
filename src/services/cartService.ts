@@ -7,7 +7,7 @@ import { Messages } from "../utils/constants";
 const BOOK_POPULATE = {
   path: "items.bookId",
   select:
-    "name author description coverImage rentalPricePerDay rentalPricePerWeek rentalPricePerMonth purchasePrice securityDeposit",
+    "name author description coverImage rentalPricePerDay rentalPricePerWeek rentalPricePerMonth purchasePrice securityDeposit isActive isAvailable quantity",
 };
 
 const getPopulatedCartWithSummary = async (
@@ -19,8 +19,39 @@ const getPopulatedCartWithSummary = async (
 
   if (!cart) return null;
 
-  return {
+  // Reservation rule: reservedQtyForBook = sum(cart quantities for same bookId),
+  const reservedQtyByBook = new Map<string, number>();
+  for (const item of cart.items as any[]) {
+    const populatedBook = (item as any).bookId;
+    const bookId = populatedBook?._id ? String(populatedBook._id) : String((item as any).bookId);
+    reservedQtyByBook.set(
+      bookId,
+      (reservedQtyByBook.get(bookId) ?? 0) + Number((item as any).quantity ?? 1)
+    );
+  }
+
+  const cartWithAvailability = {
     ...cart,
+    items: cart.items.map((item: any) => {
+      const populatedBook = item.bookId;
+      const bookId = populatedBook?._id ? String(populatedBook._id) : String(item.bookId);
+      const reservedQty = reservedQtyByBook.get(bookId) ?? 0;
+      const inventoryQty = Number(populatedBook?.quantity ?? 0);
+      const effectiveIsAvailable = inventoryQty >= reservedQty;
+
+      return {
+        ...item,
+        bookId: {
+          ...populatedBook,
+          isAvailable: effectiveIsAvailable,
+          isActive: populatedBook?.isActive,
+        },
+      };
+    }),
+  };
+
+  return {
+    ...cartWithAvailability,
     summary: computeCartTotals(cart as any),
   };
 };
