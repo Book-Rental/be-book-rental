@@ -17,4 +17,3 @@ router.patch("/items/:bookId", auth as any, patchCartItemQuantity);
 router.delete("/clear", auth as any, clearCart);
 
 export default router;
-

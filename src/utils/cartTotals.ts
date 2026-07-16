@@ -27,9 +27,7 @@ type CartTotalsItem = {
     securityDepositLine: number;
 };
 
-export const computeCartTotals = (
-    cart: (ICart & { items: CartItemWithBook[] }) | null
-) => {
+export const computeCartTotals = (cart: (ICart & { items: CartItemWithBook[] }) | null) => {
     const items = cart?.items ?? [];
 
     const totalsItems: CartTotalsItem[] = [];
@@ -72,9 +70,7 @@ export const computeCartTotals = (
         const lineSubtotal = unitPrice * quantity;
 
         const securityDepositLine =
-            pricingMode === "rent"
-                ? Number(book.securityDeposit ?? 0) * quantity
-                : 0;
+            pricingMode === "rent" ? Number(book.securityDeposit ?? 0) * quantity : 0;
 
         subtotal += lineSubtotal;
         securityDepositTotal += securityDepositLine;

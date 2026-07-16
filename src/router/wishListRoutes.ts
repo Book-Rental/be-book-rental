@@ -1,5 +1,12 @@
 import { Router } from "express";
-import { addItemToWishlist, createWishlistGroup, getUserWishlistNames, getUserWishlists, getUserWishlistsWithBooks, removeBookFromWishlist } from "../controllers/wishListController";
+import {
+    addItemToWishlist,
+    createWishlistGroup,
+    getUserWishlistNames,
+    getUserWishlists,
+    getUserWishlistsWithBooks,
+    removeBookFromWishlist,
+} from "../controllers/wishListController";
 
 const router = Router();
 
@@ -9,6 +16,5 @@ router.get("/wishlistName/:userId", getUserWishlistNames);
 router.post("/group", createWishlistGroup);
 router.post("/add", addItemToWishlist);
 router.delete("/delete/:id", removeBookFromWishlist);
-
 
 export default router;

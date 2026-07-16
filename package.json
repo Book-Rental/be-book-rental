@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "test": "vitest --config vitest.config.ts --run",
     "test:watch": "vitest --config vitest.config.ts",
-    "test:coverage": "vitest --config vitest.config.ts --run --coverage"
+    "test:coverage": "vitest --config vitest.config.ts --run --coverage",
+     "format": "prettier --write \"src/**/*.ts\""
   },
   "author": "",
   "license": "ISC",
@@ -38,6 +39,7 @@
     "@types/node": "^22.20.1",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "prettier": "^3.9.5",
     "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",

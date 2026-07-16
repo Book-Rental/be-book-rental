@@ -1,11 +1,16 @@
 import Book from "../models/Book";
 import { buildBookAggregationPipeline, buildFilter } from "../utils/bookFilters";
-import { Messages } from "../utils/constants"
-import { errorResponse, failResponse, successResponse } from "../utils/response"
-import { StatusCode } from "../utils/StatusCodes"
-import { Request, Response } from 'express';
+import { Messages } from "../utils/constants";
+import { errorResponse, failResponse, successResponse } from "../utils/response";
+import { StatusCode } from "../utils/StatusCodes";
+import { Request, Response } from "express";
 import { uploadToCloudinary } from "../utils/UploadImage";
-import { createBookService, deleteBookByIdService, getBookByIdService, updateBookByIdService } from "../services/bookService";
+import {
+    createBookService,
+    deleteBookByIdService,
+    getBookByIdService,
+    updateBookByIdService,
+} from "../services/bookService";
 
 export const getAllBooks = async (req: Request, res: Response) => {
     try {
@@ -18,7 +23,6 @@ export const getAllBooks = async (req: Request, res: Response) => {
             Number(limit)
         );
 
-
         const products = await Book.aggregate(pipeline);
         const totalCount = await Book.countDocuments(await buildFilter(filterQuery));
         const hasMore = (Number(page) - 1) * Number(limit) + products.length < totalCount;
@@ -30,10 +34,9 @@ export const getAllBooks = async (req: Request, res: Response) => {
             totalPages: Math.ceil(totalCount / Number(limit)),
         });
     } catch (error) {
-        errorResponse(res, 'Error fetching products by filters');
+        errorResponse(res, "Error fetching products by filters");
     }
-}
-
+};
 
 export const createBook = async (req: Request, res: Response) => {
     try {
@@ -56,14 +59,19 @@ export const createBook = async (req: Request, res: Response) => {
 
         if (files?.images && files.images.length > 0) {
             const uploadPromises = files.images.map(async (file) => {
-                const secureUrl = await uploadToCloudinary(file.buffer, "BookImages", file.originalname);
+                const secureUrl = await uploadToCloudinary(
+                    file.buffer,
+                    "BookImages",
+                    file.originalname
+                );
 
                 // Extract clean file name without extension to use as altText
-                const fallbackAltText = file.originalname.split('.').slice(0, -1).join('.') || 'Book Image';
+                const fallbackAltText =
+                    file.originalname.split(".").slice(0, -1).join(".") || "Book Image";
 
                 return {
                     url: secureUrl,
-                    altText: fallbackAltText // Satisfies Mongoose schema required: true rule
+                    altText: fallbackAltText, // Satisfies Mongoose schema required: true rule
                 };
             });
 
@@ -78,7 +86,7 @@ export const createBook = async (req: Request, res: Response) => {
             coverImage: coverImageUrl,
             images: alternativeImages, // Now successfully satisfies your subdocument constraint!
             sellerId: body.sellerId || authenticatedUserId,
-            createdBy: authenticatedUserId
+            createdBy: authenticatedUserId,
         };
 
         // 4. Delegate database insertion to service layer
@@ -90,7 +98,6 @@ export const createBook = async (req: Request, res: Response) => {
             Messages.Book_Created_Successfully,
             StatusCode.Created
         );
-
     } catch (err: any) {
         console.error("Create Book Controller Error:", err);
         return failResponse(
@@ -109,7 +116,6 @@ export const deleteBookById = async (req: Request, res: Response) => {
             return failResponse(res, Messages.Book_Not_Found, StatusCode.Not_Found);
         }
         return successResponse(res, deleteBook, Messages.Book_Deleted_Successfully, StatusCode.OK);
-
     } catch (err: any) {
         console.error("Delete Book Controller Error:", err);
         return failResponse(
@@ -118,8 +124,7 @@ export const deleteBookById = async (req: Request, res: Response) => {
             StatusCode.Bad_Request
         );
     }
-}
-
+};
 
 export const getBookById = async (req: Request, res: Response) => {
     try {
@@ -130,16 +135,15 @@ export const getBookById = async (req: Request, res: Response) => {
         }
 
         return successResponse(res, book, Messages.Book_Found_Successfully, StatusCode.OK);
-    }
-    catch (err: any) {
+    } catch (err: any) {
         failResponse(res, err.message || Messages.Internal_Server_Error, StatusCode.Bad_Request);
     }
-}
+};
 
 export const updateBookById = async (req: Request, res: Response) => {
     try {
         const bookId = req.params.id as string;
-        
+
         // 1. Verify target book exists
         const existingBook = await getBookByIdService(bookId);
         if (!existingBook) {
@@ -162,24 +166,33 @@ export const updateBookById = async (req: Request, res: Response) => {
         // 3. Handle Optional Multi Gallery Images Addition
         if (files?.images && files.images.length > 0) {
             const uploadPromises = files.images.map(async (file) => {
-                const secureUrl = await uploadToCloudinary(file.buffer, "BookImages", file.originalname);
-                const fallbackAltText = file.originalname.split('.').slice(0, -1).join('.') || 'Book Image';
+                const secureUrl = await uploadToCloudinary(
+                    file.buffer,
+                    "BookImages",
+                    file.originalname
+                );
+                const fallbackAltText =
+                    file.originalname.split(".").slice(0, -1).join(".") || "Book Image";
                 return { url: secureUrl, altText: fallbackAltText };
             });
 
             const newUploadedImages = await Promise.all(uploadPromises);
-            
+
             // Append new image items to the existing subdocument collection
             const currentImages = existingBook.images || [];
             updateData.images = [...currentImages, ...newUploadedImages];
         }
 
         // 4. Sanitize explicit data types from multipart string inputs
-        if (updateData.availableForSale) updateData.availableForSale = updateData.availableForSale === "true";
-        if (updateData.availableForRent) updateData.availableForRent = updateData.availableForRent === "true";
+        if (updateData.availableForSale)
+            updateData.availableForSale = updateData.availableForSale === "true";
+        if (updateData.availableForRent)
+            updateData.availableForRent = updateData.availableForRent === "true";
         if (updateData.isPopular) updateData.isPopular = updateData.isPopular === "true";
-        if (updateData.purchasePrice) updateData.purchasePrice = parseFloat(updateData.purchasePrice);
-        if (updateData.rentalPricePerDay) updateData.rentalPricePerDay = parseFloat(updateData.rentalPricePerDay);
+        if (updateData.purchasePrice)
+            updateData.purchasePrice = parseFloat(updateData.purchasePrice);
+        if (updateData.rentalPricePerDay)
+            updateData.rentalPricePerDay = parseFloat(updateData.rentalPricePerDay);
 
         // Track who initialized this content change
         const authenticatedUserId = (req as any).user?.id;
@@ -195,7 +208,6 @@ export const updateBookById = async (req: Request, res: Response) => {
             "Book listing updated successfully",
             StatusCode.OK
         );
-
     } catch (err: any) {
         console.error("Update Book Controller Error:", err);
         return failResponse(

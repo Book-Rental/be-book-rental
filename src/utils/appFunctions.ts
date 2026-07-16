@@ -1,20 +1,23 @@
-
-const crypto = require('crypto');
-
+const crypto = require("crypto");
 
 export const generateEmailVerificationToken = () => {
-    return crypto.randomBytes(32).toString('hex');
-}
+    return crypto.randomBytes(32).toString("hex");
+};
 
 export const hashToken = (token: string, userEmail: string) => {
-    const tokenHash = crypto.createHash('sha256').update(token + userEmail).digest('hex');
+    const tokenHash = crypto
+        .createHash("sha256")
+        .update(token + userEmail)
+        .digest("hex");
     return tokenHash;
-}
+};
 
-export const buildPaginationQuery = (query: any): {
-    skip: number,
-    limit: number,
-    page: number
+export const buildPaginationQuery = (
+    query: any
+): {
+    skip: number;
+    limit: number;
+    page: number;
 } => {
     try {
         const page = parseInt(query.page) || 1; // Default to page 1
@@ -23,13 +26,13 @@ export const buildPaginationQuery = (query: any): {
         return {
             limit,
             skip,
-            page
-        }
+            page,
+        };
     } catch (err) {
         return {
             skip: 0,
             limit: 10,
-            page: 1
-        }
+            page: 1,
+        };
     }
-}
+};

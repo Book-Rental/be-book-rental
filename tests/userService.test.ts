@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import User from "../src/models/User";
 
 import {
+    addUserAddressService,
     createUserService,
     deleteUserAddressService,
     deleteUserService,
+    getAddressByIdService,
     getAllUsersService,
+    getUserAddressesService,
     getUserByIdService,
     loginService,
     updateUserAddressService,
@@ -15,6 +18,7 @@ import {
 
 import * as appFunctions from "../src/utils/appFunctions";
 import { Messages } from "../src/utils/constants";
+import mongoose from "mongoose";
 vi.mock("../src/models/User", () => {
     const MockUser: any = vi.fn();
 
@@ -521,86 +525,289 @@ describe("User Service", () => {
         });
     });
 
-    //Update Address By user ID 
-    describe("updateUserAddressService()", () => {
-        const mockUserId = "60c72b2f9b1d8b2bad000001";
-        const mockAddressId = "60c72b2f9b1d8b2bad000999";
+
+
+    describe("User Address Services", () => {
+        // Generate valid 24-character hex ObjectIds to pass Mongoose validation checks
+        const validUserId = "60c72b2f9b1d8b2bad000001";
+        const validAddressId = "60c72b2f9b1d8b2bad000999";
+        const invalidId = "123-short-id";
+
+        let mockUserInstance: any;
 
         beforeEach(() => {
             vi.clearAllMocks();
+
+            // Re-initialize a fresh mock instance before each test to prevent mutation leakage
+            mockUserInstance = {
+                _id: validUserId,
+                addresses: [
+                    {
+                        _id: new mongoose.Types.ObjectId(validAddressId),
+                        street: "123 Main St",
+                        isDefault: true,
+                        // Simple mock definition of Mongoose's subdocument deleteOne helper
+                        deleteOne: vi.fn().mockImplementation(function (this: any) {
+                            mockUserInstance.addresses = mockUserInstance.addresses.filter(
+                                (a: any) => a._id.toString() !== validAddressId
+                            );
+                        })
+                    }
+                ],
+                // Mock Mongoose's document save function
+                save: vi.fn().mockImplementation(function (this: any) {
+                    return Promise.resolve(this);
+                })
+            };
         });
 
-        it("should accurately flatten newAddress properties into positional array notation using $set", async () => {
-            const inputAddress = {
-                id: mockAddressId,
+        // =========================================================================
+        // 1. addUserAddressService()
+        // =========================================================================
+        describe("addUserAddressService()", () => {
+            const newAddressPayload = {
                 street: "456 Oak Ave",
-                city: "Los Angeles",
-                zipCode: "90001"
+                city: "Hyderabad",
+                isDefault: false
             };
 
-            const mockWriteResult = { acknowledged: true, modifiedCount: 1, matchedCount: 1 };
-            vi.mocked(User.updateOne).mockResolvedValue(mockWriteResult as any);
+            it("should reject with validation error if user ID structure is incorrect", async () => {
+                await expect(addUserAddressService(invalidId, newAddressPayload))
+                    .rejects.toThrowError("Invalid user id.");
+            });
 
-            const result = await updateUserAddressService(mockUserId, inputAddress);
+            it("should throw an error if the user document is completely missing", async () => {
+                vi.mocked(User.findById).mockResolvedValue(null);
+                await expect(addUserAddressService(validUserId, newAddressPayload))
+                    .rejects.toThrowError("User not found.");
+            });
 
-            // Verify positional mapping: "addresses.$.property"
-            expect(User.updateOne).toHaveBeenCalledWith(
-                { _id: mockUserId, "addresses._id": mockAddressId },
-                {
-                    $set: {
-                        "addresses.$.id": mockAddressId,
-                        "addresses.$.street": "456 Oak Ave",
-                        "addresses.$.city": "Los Angeles",
-                        "addresses.$.zipCode": "90001"
-                    }
-                }
-            );
-            expect(result).toEqual(mockWriteResult);
+            it("should successfully append a brand new address to the array list", async () => {
+                vi.mocked(User.findById).mockResolvedValue(mockUserInstance);
+
+                const result = await addUserAddressService(validUserId, newAddressPayload);
+
+                expect(User.findById).toHaveBeenCalledWith(validUserId);
+                expect(mockUserInstance.addresses).toHaveLength(2);
+                expect(mockUserInstance.save).toHaveBeenCalledTimes(1);
+                expect(result.street).toBe("456 Oak Ave");
+            });
+
+            it("should unset all existing default flags if the incoming address is set to default", async () => {
+                vi.mocked(User.findById).mockResolvedValue(mockUserInstance);
+                const defaultAddressPayload = { ...newAddressPayload, isDefault: true };
+
+                await addUserAddressService(validUserId, defaultAddressPayload);
+
+                // The original pre-existing address should be forced to false
+                expect(mockUserInstance.addresses[0].isDefault).toBe(false);
+                // The brand new address retains its true flag
+                expect(mockUserInstance.addresses[1].isDefault).toBe(true);
+            });
+            it("should throw User not found error during add address operation", async () => {
+                vi.mocked(User.findById).mockResolvedValue(null);
+                await expect(addUserAddressService("60c72b2f9b1d8b2bad000001", {}))
+                    .rejects.toThrowError("User not found.");
+            });
+
         });
 
-        it("should safely return execution error object if update operation fails", async () => {
-            vi.mocked(User.updateOne).mockRejectedValueOnce(new Error("Mongoose Connection Failure"));
+        // =========================================================================
+        // 2. updateUserAddressService()
+        // =========================================================================
+        describe("updateUserAddressService()", () => {
+            const updatePayload = { street: "789 Pine Rd" };
 
-            const result = await updateUserAddressService(mockUserId, { id: mockAddressId });
+            it("should validate both route arguments before matching document keys", async () => {
+                await expect(updateUserAddressService(invalidId, validAddressId, updatePayload))
+                    .rejects.toThrowError("Invalid user id.");
 
-            expect(result).toBeInstanceOf(Error);
-            expect((result as Error).message).toBe("Mongoose Connection Failure");
+                await expect(updateUserAddressService(validUserId, invalidId, updatePayload))
+                    .rejects.toThrowError("Invalid address id.");
+            });
+
+            it("should throw an error if the specific address ID is missing from the list", async () => {
+                vi.mocked(User.findById).mockResolvedValue(mockUserInstance);
+                await expect(updateUserAddressService(validUserId, "60c72b2f9b1d8b2bad000111", updatePayload))
+                    .rejects.toThrowError("Address not found.");
+            });
+
+            it("should iterate keys cleanly and merge parameters dynamically into target object indices", async () => {
+                vi.mocked(User.findById).mockResolvedValue(mockUserInstance);
+
+                const result = await updateUserAddressService(validUserId, validAddressId, updatePayload);
+
+                expect(result.street).toBe("789 Pine Rd");
+                expect(mockUserInstance.save).toHaveBeenCalledTimes(1);
+            });
+
+            it("should handle default flag cascading updates correctly", async () => {
+                // Add a secondary dummy item to test cascading resets
+                mockUserInstance.addresses.push({ _id: new mongoose.Types.ObjectId(), isDefault: false });
+                vi.mocked(User.findById).mockResolvedValue(mockUserInstance);
+
+                // Actively update the first element to trigger cascades
+                await updateUserAddressService(validUserId, validAddressId, { isDefault: true });
+
+                expect(mockUserInstance.addresses[0].isDefault).toBe(true);
+            });
+            it("should skip user id validation and throw error on invalid address id specifically", async () => {
+                // Pass a PERFECTLY VALID user id, but an invalid address id format
+                await expect(updateUserAddressService("60c72b2f9b1d8b2bad000001", "short-address-id", {}))
+                    .rejects.toThrowError("Invalid address id.");
+            });
+            it("should throw User not found error during update address operation", async () => {
+                vi.mocked(User.findById).mockResolvedValue(null);
+                await expect(updateUserAddressService("60c72b2f9b1d8b2bad000001", "60c72b2f9b1d8b2bad000999", {}))
+                    .rejects.toThrowError("User not found.");
+            });
+
+        });
+
+        // =========================================================================
+        // 3. deleteUserAddressService()
+        // =========================================================================
+        describe("deleteUserAddressService()", () => {
+            it("should successfully trigger deleteOne subdocument calls and clear targeted array references", async () => {
+                vi.mocked(User.findById).mockResolvedValue(mockUserInstance);
+
+                const result = await deleteUserAddressService(validUserId, validAddressId);
+
+                expect(result).toBe(true);
+                expect(mockUserInstance.addresses).toHaveLength(0);
+                expect(mockUserInstance.save).toHaveBeenCalledTimes(1);
+            });
+
+            it("should bubble out error if targeted deletion element is absent", async () => {
+                vi.mocked(User.findById).mockResolvedValue(mockUserInstance);
+                await expect(deleteUserAddressService(validUserId, "60c72b2f9b1d8b2bad000111"))
+                    .rejects.toThrowError("Address not found.");
+            });
+            it("should bypass user verification and throw on invalid address id structure during deletion", async () => {
+                // Pass a valid user id, but a broken address id structure
+                await expect(deleteUserAddressService("60c72b2f9b1d8b2bad000001", "short-address-id"))
+                    .rejects.toThrowError("Invalid address id.");
+            });
+            it("should throw User not found error during delete address operation", async () => {
+                vi.mocked(User.findById).mockResolvedValue(null);
+                await expect(deleteUserAddressService("60c72b2f9b1d8b2bad000001", "60c72b2f9b1d8b2bad000999"))
+                    .rejects.toThrowError("User not found.");
+            });
+            it("should trigger immediate failure flag at line 261 when an invalid user ID structure is encountered", async () => {
+                // 1. Arrange: Define a broken alpha-numeric or short string that fails 24-character hex rules
+                const structurallyInvalidUserId = "invalid-user-123";
+                const normalLookingAddressId = "60c72b2f9b1d8b2bad000999";
+
+                // 2. Act & Assert: Execute and expect it to reject with the exact string message on line 262
+                await expect(deleteUserAddressService(structurallyInvalidUserId, normalLookingAddressId))
+                    .rejects
+                    .toThrowError("Invalid user id.");
+            });
+
+        });
+
+        // =========================================================================
+        // 4. getUserAddressesService()
+        // =========================================================================
+        describe("getUserAddressesService()", () => {
+            it("should return the entire address payload array with field projection safety", async () => {
+                // Simulate Mongoose select chaining mock
+                const mockQueryChain: any = {
+                    select: vi.fn().mockResolvedValue(mockUserInstance)
+                };
+                vi.mocked(User.findById).mockReturnValue(mockQueryChain);
+
+                const result = await getUserAddressesService(validUserId);
+
+                expect(User.findById).toHaveBeenCalledWith(validUserId);
+                expect(mockQueryChain.select).toHaveBeenCalledWith("addresses");
+                expect(result).toEqual(mockUserInstance.addresses);
+            });
+            it("should throw User not found error when trying to fetch all addresses", async () => {
+                const mockQueryChain: any = {
+                    select: vi.fn().mockResolvedValue(null)
+                };
+                vi.mocked(User.findById).mockReturnValue(mockQueryChain);
+
+                await expect(getUserAddressesService("60c72b2f9b1d8b2bad000001"))
+                    .rejects.toThrowError("User not found.");
+            });
+            it("should trigger immediate failure flag when an invalid user ID structure is encountered", async () => {
+                // 1. Arrange: Define a broken string that fails the 24-character hexadecimal rule
+                const structurallyInvalidUserId = "invalid-user-123";
+
+                // 2. Act & Assert: Execute and verify it throws the exact error message
+                await expect(getUserAddressesService(structurallyInvalidUserId))
+                    .rejects
+                    .toThrowError("Invalid user id.");
+            });
+
+
+        });
+
+        // =========================================================================
+        // 5. getAddressByIdService()
+        // =========================================================================
+        describe("getAddressByIdService()", () => {
+            it("should isolate and return a specific single subdocument matching addressId context", async () => {
+                const mockQueryChain: any = {
+                    select: vi.fn().mockResolvedValue(mockUserInstance)
+                };
+                vi.mocked(User.findById).mockReturnValue(mockQueryChain);
+
+                const result = await getAddressByIdService(validUserId, validAddressId);
+
+                expect(result._id.toString()).toBe(validAddressId);
+            });
+
+            it("should throw error if address item lookup returns empty", async () => {
+                const mockQueryChain: any = {
+                    select: vi.fn().mockResolvedValue(mockUserInstance)
+                };
+                vi.mocked(User.findById).mockReturnValue(mockQueryChain);
+
+                await expect(getAddressByIdService(validUserId, "60c72b2f9b1d8b2bad000111"))
+                    .rejects.toThrowError("Address not found.");
+            });
+            it("should successfully trigger address id structure validation errors when user id passes checks", async () => {
+                // Pass a valid user id, but a broken address id structure
+                await expect(getAddressByIdService("60c72b2f9b1d8b2bad000001", "short-address-id"))
+                    .rejects.toThrowError("Invalid address id.");
+            });
+            it("should throw User not found error when searching for a single address by id", async () => {
+                const mockQueryChain: any = {
+                    select: vi.fn().mockResolvedValue(null)
+                };
+                vi.mocked(User.findById).mockReturnValue(mockQueryChain);
+
+                await expect(getAddressByIdService("60c72b2f9b1d8b2bad000001", "60c72b2f9b1d8b2bad000999"))
+                    .rejects.toThrowError("User not found.");
+            });
+            it("should trigger immediate failure flag when an invalid user ID structure is encountered", async () => {
+                // 1. Arrange: Structurally broken user ID, but valid address ID format
+                const structurallyInvalidUserId = "invalid-user-123";
+                const normalLookingAddressId = "60c72b2f9b1d8b2bad000999";
+
+                // 2. Act & Assert: Verify it short-circuits instantly at the first check
+                await expect(getAddressByIdService(structurallyInvalidUserId, normalLookingAddressId))
+                    .rejects
+                    .toThrowError("Invalid user id.");
+            });
+
+            it("should bypass user ID checks and trigger a failure flag when an invalid address ID structure is encountered", async () => {
+                // 1. Arrange: Perfectly valid 24-character hex user ID, but structurally broken address ID
+                const normalLookingUserId = "60c72b2f9b1d8b2bad000001";
+                const structurallyInvalidAddressId = "invalid-address-456";
+
+                // 2. Act & Assert: Verify it passes the first guard clause but catches on the second
+                await expect(getAddressByIdService(normalLookingUserId, structurallyInvalidAddressId))
+                    .rejects
+                    .toThrowError("Invalid address id.");
+            });
+
         });
     });
 
-    describe("deleteUserAddressService()", () => {
-        const mockUserId = "60c72b2f9b1d8b2bad000001";
-        const mockAddressId = "60c72b2f9b1d8b2bad000999";
 
-        beforeEach(() => {
-            vi.clearAllMocks();
-        });
-
-        it("should remove target address subdocument out of model array using $pull syntax", async () => {
-            const mockWriteResult = { acknowledged: true, modifiedCount: 1, matchedCount: 1 };
-            vi.mocked(User.updateOne).mockResolvedValue(mockWriteResult as any);
-
-            const result = await deleteUserAddressService(mockUserId, mockAddressId);
-
-            expect(User.updateOne).toHaveBeenCalledWith(
-                { _id: mockUserId },
-                {
-                    $pull: {
-                        addresses: { _id: mockAddressId }
-                    }
-                }
-            );
-            expect(result).toEqual(mockWriteResult);
-        });
-
-        it("should catch validation or write errors and return them to the caller", async () => {
-            vi.mocked(User.updateOne).mockRejectedValueOnce(new Error("BSON Extraction Error"));
-
-            const result = await deleteUserAddressService(mockUserId, mockAddressId);
-
-            expect(result).toBeInstanceOf(Error);
-            expect((result as Error).message).toBe("BSON Extraction Error");
-        });
-    });
 
 });

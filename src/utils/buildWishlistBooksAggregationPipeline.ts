@@ -1,8 +1,4 @@
-export const buildWishlistBooksAggregationPipeline = (
-    filter: any,
-    page: number,
-    limit: number,
-) => {
+export const buildWishlistBooksAggregationPipeline = (filter: any, page: number, limit: number) => {
     const skip = (page - 1) * limit;
 
     return [

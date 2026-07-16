@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
 import Book, { IBook } from "../models/Book";
 
-
-
 export const createBookService = async (data: Partial<IBook>) => {
     try {
         const parsedData: Partial<IBook> = { ...data };
@@ -14,12 +12,10 @@ export const createBookService = async (data: Partial<IBook>) => {
         });
 
         return newBook;
-
     } catch (err) {
         throw err;
     }
 };
-
 
 export const deleteBookByIdService = async (id: string) => {
     try {
@@ -28,16 +24,15 @@ export const deleteBookByIdService = async (id: string) => {
     } catch (err) {
         throw err;
     }
-}
-
+};
 
 export const getBookByIdService = async (id: string) => {
     try {
-        return await Book.findById(id)
+        return await Book.findById(id);
     } catch (err) {
         throw err;
     }
-}
+};
 
 export const updateBookByIdService = async (id: string, data: Partial<IBook>) => {
     try {
@@ -46,4 +41,4 @@ export const updateBookByIdService = async (id: string, data: Partial<IBook>) =>
     } catch (err) {
         throw err;
     }
-}
+};

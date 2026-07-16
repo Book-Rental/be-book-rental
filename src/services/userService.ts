@@ -1,38 +1,46 @@
-import { Types } from 'mongoose';
-import { IUser } from '../models/interfaces';
-import User from '../models/User';
-import { Messages } from '../utils/constants';
-import { buildPaginationQuery, generateEmailVerificationToken, hashToken } from '../utils/appFunctions';
-import mongoose from 'mongoose';
+import { Types } from "mongoose";
+import { IUser } from "../models/interfaces";
+import User from "../models/User";
+import { Messages } from "../utils/constants";
+import {
+    buildPaginationQuery,
+    generateEmailVerificationToken,
+    hashToken,
+} from "../utils/appFunctions";
+import mongoose from "mongoose";
 
-export const getAllUsersService = async (query: { search: string, page: number, limit: number, userType: string, status: string }) => {
+export const getAllUsersService = async (query: {
+    search: string;
+    page: number;
+    limit: number;
+    userType: string;
+    status: string;
+}) => {
     try {
-        const { skip, limit, page } = buildPaginationQuery(query)
+        const { skip, limit, page } = buildPaginationQuery(query);
         const { userType, status, search } = query;
 
         let searchFilter: any = {
             $and: [
                 { isActive: true },
-                (userType && { userType: userType }),
-                (status && { status: status })
-
+                userType && { userType: userType },
+                status && { status: status },
             ].filter((option) => !!option),
 
             ...(search && {
                 $or: [
-                    { firstName: { $regex: search, $options: 'i' } },
-                    { lastName: { $regex: search, $options: 'i' } },
-                    { email: { $regex: search, $options: 'i' } }
-                ]
-            })
+                    { firstName: { $regex: search, $options: "i" } },
+                    { lastName: { $regex: search, $options: "i" } },
+                    { email: { $regex: search, $options: "i" } },
+                ],
+            }),
         };
 
-
-        const totalRecords = await User.countDocuments(searchFilter)
+        const totalRecords = await User.countDocuments(searchFilter);
         const totalPages = Math.ceil(totalRecords / limit);
         const hasMore = page < totalPages;
 
-        const selectedFields = `email userType lastName firstName status addresses password isVerified profilePic`
+        const selectedFields = `email userType lastName firstName status addresses password isVerified profilePic`;
         const users = await User.find(searchFilter)
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -48,13 +56,13 @@ export const getAllUsersService = async (query: { search: string, page: number, 
                 currentPage: page,
                 limit,
                 hasMore,
-            }
+            },
         };
     } catch (err) {
-        console.log('err', err)
+        console.log("err", err);
         return err;
     }
-}
+};
 
 export const createUserService = async (body: IUser): Promise<IUser | any> => {
     try {
@@ -62,13 +70,13 @@ export const createUserService = async (body: IUser): Promise<IUser | any> => {
         if (user) {
             return {
                 message: Messages.Duplicate_Email,
-                email: body.email
+                email: body.email,
             };
         }
         const newUser = new User(body);
         const savedUser = await newUser.save();
         savedUser.verificationToken = generateEmailVerificationToken();
-        savedUser.hashedToken = hashToken(savedUser.verificationToken!, body.email)
+        savedUser.hashedToken = hashToken(savedUser.verificationToken!, body.email);
         savedUser.isVerified = false;
         savedUser.createdBy = savedUser._id as unknown as Types.ObjectId;
         savedUser.updatedBy = savedUser._id as unknown as Types.ObjectId;
@@ -78,9 +86,7 @@ export const createUserService = async (body: IUser): Promise<IUser | any> => {
     } catch (err) {
         return err;
     }
-}
-
-
+};
 
 export const deleteUserService = async (id: string) => {
     try {
@@ -89,64 +95,56 @@ export const deleteUserService = async (id: string) => {
     } catch (err) {
         return err;
     }
-}
-
+};
 
 export const updateUserService = async (id: string, data: any) => {
     try {
-
-        const user = await User.find({ _id: id }) as any;
+        const user = (await User.find({ _id: id })) as any;
         let newAddress = null;
         let userUpdateObj: any = {
-            $set: data
-        }
+            $set: data,
+        };
         if (data?.address) {
             newAddress = data?.address;
             delete data?.address;
             userUpdateObj = {
                 ...userUpdateObj,
                 $push: { addresses: newAddress },
-            }
+            };
         }
 
-        const userUpdate = await User.findOneAndUpdate(
-            { _id: id },
-            userUpdateObj,
-            { new: true, runValidators: true, upsert: true }
-        );
+        const userUpdate = await User.findOneAndUpdate({ _id: id }, userUpdateObj, {
+            new: true,
+            runValidators: true,
+            upsert: true,
+        });
         return userUpdate;
     } catch (err) {
         return err;
     }
-}
-
+};
 
 export const loginService = async (email: string) => {
     try {
-        const selectedFields = `email userType lastName firstName status addresses isVerified password favoriteProducts`
-        return await User.findOne({ email }, selectedFields).exec()
+        const selectedFields = `email userType lastName firstName status addresses isVerified password favoriteProducts`;
+        return await User.findOne({ email }, selectedFields).exec();
     } catch (err) {
         return err;
     }
-}
-
+};
 
 export const getUserByIdService = async (id: string) => {
     try {
-        const selectedFields = `email userType lastName firstName status addresses isVerified profilePic deliveryStatus maxConcurrentOrders currentOrderIds currentLocation`
+        const selectedFields = `email userType lastName firstName status addresses isVerified profilePic deliveryStatus maxConcurrentOrders currentOrderIds currentLocation`;
         const user = await User.findOne({ _id: id }, selectedFields);
 
         return user;
     } catch (err) {
         return err;
     }
-}
+};
 
-
-export const addUserAddressService = async (
-    userId: string,
-    addressData: any
-) => {
+export const addUserAddressService = async (userId: string, addressData: any) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             throw new Error("Invalid user id.");
@@ -227,10 +225,7 @@ export const updateUserAddressService = async (
 /**
  * Delete User Address
  */
-export const deleteUserAddressService = async (
-    userId: string,
-    addressId: string
-) => {
+export const deleteUserAddressService = async (userId: string, addressId: string) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             throw new Error("Invalid user id.");
@@ -286,10 +281,7 @@ export const getUserAddressesService = async (userId: string) => {
 /**
  * Get Address By Id
  */
-export const getAddressByIdService = async (
-    userId: string,
-    addressId: string
-) => {
+export const getAddressByIdService = async (userId: string, addressId: string) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             throw new Error("Invalid user id.");
