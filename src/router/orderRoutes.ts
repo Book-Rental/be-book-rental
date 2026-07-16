@@ -3,6 +3,7 @@ import {
     createOrder,
     deleteOrderById,
     getAllOrders,
+    getOrderBookDetails,
     getOrderById,
     getOrderByUserId,
 } from "../controllers/orderController";
@@ -12,6 +13,7 @@ const route = Router();
 route.get("/", getAllOrders);
 route.get("/:orderId", getOrderById);
 route.get("/getByUserId/:userId", getOrderByUserId);
+route.get("/:orderId/book/:bookId", getOrderBookDetails);
 route.post("/craete", createOrder);
 route.delete("/:orderId", deleteOrderById);
 

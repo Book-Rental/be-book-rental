@@ -77,80 +77,46 @@ const AddressSnapshotSchema = new Schema(
     }
 );
 
-const OrderItemSchema = new Schema(
-    {
-        bookId: {
-            type: Types.ObjectId,
-            ref: "Book",
-            required: true,
-        },
-
-        sellerId: {
-            type: Types.ObjectId,
-            ref: "User",
-            required: true,
-        },
-
-        orderType: {
-            type: String,
-            enum: Object.values(OrderType),
-            required: true,
-        },
-
-        quantity: {
-            type: Number,
-            required: true,
-            min: 1,
-            default: 1,
-        },
-
-        purchasePrice: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        rentalPrice: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        rentalDuration: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        securityDeposit: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        rentStartDate: {
-            type: Date,
-        },
-
-        expectedReturnDate: {
-            type: Date,
-        },
-
-        actualReturnDate: {
-            type: Date,
-            default: null,
-        },
-
-        lateFee: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
+const OrderItemSchema = new Schema({
+    bookId: {
+        type: Schema.Types.ObjectId,
+        ref: "Book",
+        required: true,
     },
-    {
-        _id: false,
-    }
-);
+
+    sellerId: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+
+    orderType: {
+        type: String,
+        enum: Object.values(OrderType),
+        required: true,
+    },
+
+    quantity: {
+        type: Number,
+        default: 1,
+    },
+    rentalPrice: Number,
+    securityDeposit: Number,
+
+    itemStatus: {
+        type: String,
+        enum: Object.values(OrderStatus),
+        default: OrderStatus.PENDING,
+    },
+
+    rentStartDate: Date,
+    expectedReturnDate: Date,
+    actualReturnDate: Date,
+    lateFee: {
+        type: Number,
+        default: 0,
+    },
+});
 
 const OrderSchema = new Schema(
     {
@@ -239,17 +205,6 @@ const OrderSchema = new Schema(
             enum: Object.values(OrderStatus),
             default: OrderStatus.PENDING,
         },
-
-        cancellationReason: {
-            type: String,
-            default: null,
-        },
-
-        notes: {
-            type: String,
-            default: null,
-        },
-
         createdBy: {
             type: Types.ObjectId,
             ref: "User",

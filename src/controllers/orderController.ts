@@ -3,6 +3,7 @@ import {
     createOrderService,
     deleteOrderByIdService,
     getAllOrdersService,
+    getOrderBookDetailsService,
     getOrderByOrderIdService,
     getOrderByUserIdService,
 } from "../services/orderService";
@@ -95,17 +96,17 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
                 return;
             }
 
-            if (item.orderType === "rent") {
-                if (!item.rentalDuration) {
-                    failResponse(res, "Rental Duration is required.", StatusCode.Bad_Request);
-                    return;
-                }
+            // if (item.orderType === "rent") {
+            //     if (!item.rentalDuration) {
+            //         failResponse(res, "Rental Duration is required.", StatusCode.Bad_Request);
+            //         return;
+            //     }
 
-                if (!item.rentStartDate || !item.expectedReturnDate) {
-                    failResponse(res, "Rent dates are required.", StatusCode.Bad_Request);
-                    return;
-                }
-            }
+            //     if (!item.rentStartDate || !item.expectedReturnDate) {
+            //         failResponse(res, "Rent dates are required.", StatusCode.Bad_Request);
+            //         return;
+            //     }
+            // }
         }
 
         // ================= Address Validation =================
@@ -188,6 +189,41 @@ export const deleteOrderById = async (req: Request, res: Response): Promise<void
         failResponse(
             res,
             error.message || Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+
+export const getOrderBookDetails = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    try {
+        const { orderId, bookId } = req.params as { orderId: string, bookId: string };
+
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            failResponse(res, "Invalid Order Id", StatusCode.Bad_Request);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(bookId)) {
+            failResponse(res, "Invalid Book Id", StatusCode.Bad_Request);
+            return;
+        }
+
+        const orderItem = await getOrderBookDetailsService(orderId, bookId);
+
+        successResponse(
+            res,
+            orderItem,
+            "Order book details fetched successfully",
+            StatusCode.OK
+        );
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || "Internal Server Error",
             StatusCode.Internal_Server_Error
         );
     }
