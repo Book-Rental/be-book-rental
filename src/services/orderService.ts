@@ -9,24 +9,42 @@ export const getAllOrdersService = async (query: {
     userId?: string;
     orderStatus?: string;
     orderId?: string;
+    page?: number;
+    limit?: number;
 }) => {
     try {
         const { skip, limit, page } = buildPaginationQuery(query);
-        const { userId, orderStatus, orderId } = query;
-        const searchFilter: any = {
-            $and: [
-                userId ? { userId } : null,
 
-                orderStatus ? { orderStatus } : null,
-                orderId ? { _id: orderId } : null,
-            ].filter(Boolean),
-        };
+        const { userId, orderStatus, orderId } = query;
+
+        const searchFilter: any = {};
+
+        if (userId) {
+            searchFilter.userId = userId;
+        }
+
+        if (orderStatus) {
+            searchFilter.orderStatus = orderStatus;
+        }
+
+        if (orderId) {
+            searchFilter._id = orderId;
+        }
 
         const totalRecords = await Order.countDocuments(searchFilter);
+
         const totalPages = Math.ceil(totalRecords / limit);
+
         const hasMore = page < totalPages;
 
-        const orders = await Order.find(searchFilter).skip(skip).limit(limit);
+        const orders = await Order.find(searchFilter)
+            .populate({
+                path: "items.bookId",
+                select: "name author coverImage",
+            })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
 
         return {
             orders,
@@ -38,8 +56,8 @@ export const getAllOrdersService = async (query: {
                 hasMore,
             },
         };
-    } catch (err) {
-        return err;
+    } catch (error) {
+        throw error;
     }
 };
 
@@ -152,7 +170,7 @@ export const createOrderService = async (orderData: any) => {
                 Number(tax) -
                 Number(discount);
 
-            console.log("expected total", calculatedTotal);
+
             // Validate subtotal
             if (Number(subtotal) !== calculatedSubtotal) {
                 throw new Error(
@@ -171,17 +189,40 @@ export const createOrderService = async (orderData: any) => {
                     `Total Amount mismatch. Expected ${calculatedTotal}, Received ${total}`
                 );
             }
+            let rentalPrice = 0;
+
+            if (item.orderType === OrderType.RENT) {
+                switch (item.rentalType) {
+                    case "day":
+                        rentalPrice = Number(book.rentalPricePerDay);
+                        break;
+
+                    case "week":
+                        rentalPrice = Number(book.rentalPricePerWeek);
+                        break;
+
+                    case "month":
+                        rentalPrice = Number(book.rentalPricePerMonth);
+                        break;
+
+                    default:
+                        throw new Error("Invalid rental type.");
+                }
+            }
             orderItems.push({
                 bookId: book._id,
                 sellerId: book.sellerId,
                 orderType: item.orderType,
                 quantity: item.quantity,
+                rentalPrice:
+                    item.orderType === OrderType.RENT
+                        ? rentalPrice
+                        : 0,
 
-                purchasePrice: Number(book.purchasePrice || 0),
-                rentalPrice: Number(book.rentalPrice || 0),
-                rentalDuration: Number(item.rentalDuration || 0),
-                securityDeposit: Number(book.securityDeposit || 0),
-
+                securityDeposit:
+                    item.orderType === OrderType.RENT
+                        ? Number(book.securityDeposit)
+                        : 0,
                 rentStartDate: item.rentStartDate || null,
                 expectedReturnDate: item.expectedReturnDate || null,
                 actualReturnDate: null,
@@ -190,7 +231,7 @@ export const createOrderService = async (orderData: any) => {
         }
 
         // ================= Generate Order Number =================
-        const orderNumber = `RB${Date.now()}`;
+        const orderNumber = `ORD${Date.now()}`;
 
         // ================= Create Order =================
         const order = await Order.create({
@@ -253,7 +294,10 @@ export const getOrderByUserIdService = async (userId: string, query: any = {}) =
         const totalPages = Math.ceil(totalRecords / limit);
         const hasMore = page < totalPages;
 
-        const orders = await Order.find(filter).skip(skip).limit(limit);
+        const orders = await Order.find(filter).populate({
+            path: "items.bookId",
+            select: "name author coverImage",
+        }).skip(skip).limit(limit);
 
         return {
             orders,
@@ -277,4 +321,56 @@ export const deleteOrderByIdService = async (orderId: string) => {
     } catch (error) {
         throw error;
     }
+};
+
+export const getOrderBookDetailsService = async (
+    orderId: string,
+    bookId: string
+) => {
+    const order: any = await Order.findById(orderId).populate({
+        path: "items.bookId",
+        select: "name author coverImage",
+    });
+
+    if (!order) {
+        throw new Error("Order not found.");
+    }
+
+    const orderItem = order.items.find(
+        (item: any) => item.bookId?._id.toString() === bookId
+    );
+
+    if (!orderItem) {
+        throw new Error("Book not found in this order.");
+    }
+
+    return {
+        _id: orderItem._id,
+
+        bookId: {
+            _id: orderItem.bookId._id,
+            name: orderItem.bookId.name,
+            author: orderItem.bookId.author,
+            coverImage: orderItem.bookId.coverImage,
+        },
+
+        sellerId: orderItem.sellerId,
+
+        orderType: orderItem.orderType,
+
+        quantity: orderItem.quantity,
+
+        // These values come from the ORDER
+        purchasePrice: orderItem.purchasePrice,
+        rentalPrice: orderItem.rentalPrice,
+        securityDeposit: orderItem.securityDeposit,
+
+        itemStatus: orderItem.itemStatus,
+
+        rentStartDate: orderItem.rentStartDate,
+        expectedReturnDate: orderItem.expectedReturnDate,
+        actualReturnDate: orderItem.actualReturnDate,
+
+        lateFee: orderItem.lateFee,
+    };
 };
