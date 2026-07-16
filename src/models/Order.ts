@@ -22,16 +22,55 @@ export enum PaymentStatus {
     REFUNDED = "refunded",
 }
 
+export enum PaymentMethod {
+    COD = "COD",
+    UPI = "UPI",
+    CARD = "CARD",
+    NET_BANKING = "NET_BANKING",
+}
+
 const AddressSnapshotSchema = new Schema(
     {
-        name: String,
-        type: String,
-        street: String,
-        city: String,
-        state: String,
-        zipCode: String,
-        country: String,
-        phone: String,
+        name: {
+            type: String,
+            trim: true,
+        },
+
+        type: {
+            type: String,
+            enum: ["home", "work", "other"],
+            default: "home",
+        },
+
+        street: {
+            type: String,
+            required: true,
+        },
+
+        city: {
+            type: String,
+            required: true,
+        },
+
+        state: {
+            type: String,
+            required: true,
+        },
+
+        zipCode: {
+            type: String,
+            required: true,
+        },
+
+        country: {
+            type: String,
+            required: true,
+        },
+
+        phone: {
+            type: String,
+            required: true,
+        },
     },
     {
         _id: false,
@@ -41,13 +80,13 @@ const AddressSnapshotSchema = new Schema(
 const OrderItemSchema = new Schema(
     {
         bookId: {
-            type: Schema.Types.ObjectId,
+            type: Types.ObjectId,
             ref: "Book",
             required: true,
         },
 
         sellerId: {
-            type: Schema.Types.ObjectId,
+            type: Types.ObjectId,
             ref: "User",
             required: true,
         },
@@ -60,40 +99,52 @@ const OrderItemSchema = new Schema(
 
         quantity: {
             type: Number,
-            default: 1,
+            required: true,
             min: 1,
+            default: 1,
         },
 
-        // Price snapshot at the time of ordering
         purchasePrice: {
             type: Number,
             default: 0,
+            min: 0,
         },
 
         rentalPrice: {
             type: Number,
             default: 0,
+            min: 0,
         },
 
         rentalDuration: {
             type: Number,
             default: 0,
+            min: 0,
         },
 
         securityDeposit: {
             type: Number,
             default: 0,
+            min: 0,
         },
 
-        rentStartDate: Date,
+        rentStartDate: {
+            type: Date,
+        },
 
-        expectedReturnDate: Date,
+        expectedReturnDate: {
+            type: Date,
+        },
 
-        actualReturnDate: Date,
+        actualReturnDate: {
+            type: Date,
+            default: null,
+        },
 
         lateFee: {
             type: Number,
             default: 0,
+            min: 0,
         },
     },
     {
@@ -107,10 +158,11 @@ const OrderSchema = new Schema(
             type: String,
             required: true,
             unique: true,
+            trim: true,
         },
 
-        customerId: {
-            type: Schema.Types.ObjectId,
+        userId: {
+            type: Types.ObjectId,
             ref: "User",
             required: true,
         },
@@ -118,6 +170,10 @@ const OrderSchema = new Schema(
         items: {
             type: [OrderItemSchema],
             required: true,
+            validate: {
+                validator: (items: any[]) => items.length > 0,
+                message: "Order should contain at least one book.",
+            },
         },
 
         deliveryAddress: {
@@ -128,31 +184,42 @@ const OrderSchema = new Schema(
         subtotal: {
             type: Number,
             required: true,
+            min: 0,
         },
 
-        deliveryCharge: {
+        securityDepositTotal: {
             type: Number,
             default: 0,
+            min: 0,
+        },
+
+        deliveryFee: {
+            type: Number,
+            default: 0,
+            min: 0,
         },
 
         discount: {
             type: Number,
             default: 0,
+            min: 0,
         },
 
         tax: {
             type: Number,
             default: 0,
+            min: 0,
         },
 
-        totalAmount: {
+        total: {
             type: Number,
             required: true,
+            min: 0,
         },
 
         paymentMethod: {
             type: String,
-            enum: ["COD", "UPI", "CARD", "NET_BANKING"],
+            enum: Object.values(PaymentMethod),
             required: true,
         },
 
@@ -173,9 +240,15 @@ const OrderSchema = new Schema(
             default: OrderStatus.PENDING,
         },
 
-        cancellationReason: String,
+        cancellationReason: {
+            type: String,
+            default: null,
+        },
 
-        notes: String,
+        notes: {
+            type: String,
+            default: null,
+        },
 
         createdBy: {
             type: Types.ObjectId,
@@ -198,9 +271,10 @@ const OrderSchema = new Schema(
 );
 
 // Indexes
-OrderSchema.index({ customerId: 1, createdAt: -1 });
 OrderSchema.index({ orderNumber: 1 });
+OrderSchema.index({ userId: 1, createdAt: -1 });
 OrderSchema.index({ orderStatus: 1 });
+OrderSchema.index({ paymentStatus: 1 });
 
 const Order = model("Order", OrderSchema);
 
