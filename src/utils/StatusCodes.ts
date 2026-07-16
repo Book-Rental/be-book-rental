@@ -14,5 +14,5 @@ export enum StatusCode {
     Internal_Server_Error = 500,
     Not_Implemented = 501,
     Bad_Gateway = 502,
-    Service_Unavailable = 503
+    Service_Unavailable = 503,
 }

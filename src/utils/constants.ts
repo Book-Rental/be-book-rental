@@ -1,4 +1,4 @@
-export const JWT_TOKEN_NAME = 'Authorization';
+export const JWT_TOKEN_NAME = "Authorization";
 
 export const Messages = {
     // =========================
@@ -130,10 +130,13 @@ export const Messages = {
     Order_Total_Mismatch: "Total amount mismatch",
     Order_Status_Skipped: "Invalid status change. The order cannot move backward or skip steps.",
     Order_Cannot_Cancel: "Invalid status change. The order cannot cancel, it is alredy delivered.",
-    Order_Cannot_Delivered: "Invalid status change. The order cannot devlivered, it is alredy canceled.",
+    Order_Cannot_Delivered:
+        "Invalid status change. The order cannot devlivered, it is alredy canceled.",
     Order_Comments_Required: "Send Proper Comments, message and userId required",
-    Order_Estimate_Date_Error: "Estimated delivery date should be greater than the current estimated delivery date.",
-
+    Order_Estimate_Date_Error:
+        "Estimated delivery date should be greater than the current estimated delivery date.",
+    Order_Fetch_success: "Order fetched successfully",
+    OrderID_Is_Invalid: "OrderId is Invalid ",
     // =========================
     // Address
     // =========================
@@ -150,8 +153,7 @@ export const Messages = {
     Email_Verified: "Email verified successfully!",
     Invalid_Email_Verification_Token: "Token is invalid or has expired.",
 
-
-    //Address 
+    //Address
     UserId_Required: "UserId is required",
     Address_Added: "Address added successfully",
 };
@@ -160,43 +162,42 @@ export const EmailSubjects = {
     Welcome: "Welcome to techdenali",
     ChangePassword: "Change Password",
     ForgotPassword: "ForgotPassword",
-    Default: "From Techdenali"
-}
+    Default: "From Techdenali",
+};
 
 export const RegimenInfromation = {
-    cleanse: 'Cleanse',
-    currect: 'Currect',
-    hydrate: 'Hydrate',
-    protect: 'Protect'
-}
+    cleanse: "Cleanse",
+    currect: "Currect",
+    hydrate: "Hydrate",
+    protect: "Protect",
+};
 
 export const ProductTypes = {
     retail: "Retail",
     backbar: "Backbar",
-    sample: "Sample"
-}
-
+    sample: "Sample",
+};
 
 export const PaymentMethod = {
-    Credit_Card: 'Credit Card',
-    PayPal: 'PayPal',
-    COD: 'COD'
-}
+    Credit_Card: "Credit Card",
+    PayPal: "PayPal",
+    COD: "COD",
+};
 
 export const PaymentStatus = {
-    Pending: 'Pending',
-    Paid: 'Paid',
-    Failed: 'Failed'
-}
+    Pending: "Pending",
+    Paid: "Paid",
+    Failed: "Failed",
+};
 
 export const orderAllowedUpdates = [
-    'orderStatus',
-    'shippingAddress',
-    'billingAddress',
-    'paymentStatus',
-    'estimatedDelivery',
-    'isActive',
-    'comments'
+    "orderStatus",
+    "shippingAddress",
+    "billingAddress",
+    "paymentStatus",
+    "estimatedDelivery",
+    "isActive",
+    "comments",
 ];
 
 export const UserAddressFields = [
@@ -207,5 +208,5 @@ export const UserAddressFields = [
     "zipCode",
     "country",
     "phone",
-    "id"
+    "id",
 ];

@@ -31,142 +31,139 @@ export interface IBook extends IBasicFields {
     isPopular?: boolean;
     images?: Image[];
     isAvailable?: boolean;
-    quantity: number; 
+    quantity: number;
 }
 
-const bookSchema = new Schema<IBook>(
-    {
-        name: {
-            required: true,
-            type: String
-        },
-        description: {
-            required: true,
-            type: String
-        },
-        categoryId: {
-            required: true,
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Category'
-        },
-        language: {
-            required: true,
-            type: String
-        },
-        author: {
-            required: true,
-            type: String
-        },
-        edition: {
-            type: String
-        },
-        coverImage: {
-            type: String
-        },
-        purchasePrice: {
-
-            type: Number
-        },
-        rentalPricePerDay: {
-            required: true,
-            type: Number
-        },
-        rentalPricePerWeek: {
-            required: true,
-            type: Number
-        },
-        rentalPricePerMonth: {
-            required: true,
-            type: Number
-        },
-        securityDeposit: {
-            required: true,
-            type: Number
-        },
-        availableForSale: {
-            required: true,
-            type: Boolean
-        },
-        availableForRent: {
-            required: true,
-            type: Boolean
-        },
-        availabilityStatus: {
-            type: String,
-            required: true,
-            enum: ["available", "rented_out", "sold", "maintenance"],
-            default: "available"
-        },
-        sellerId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true
-        },
-        listingType: {
-            required: true,
-            type: String,
-            enum: ['sale', 'rent', 'both']
-        },
-        quantity:{
-            required: true,
-            type: Number,
-            min: 1
-        },
-        condition: {
-            required: true,
-            type: String,
-            enum: ['new', 'used', 'like new', 'refurbished']
-        },
-        numberOfPages: {
-            type: Number
-        },
-        publicationDate: {
-            type: Date
-        },
-        isPopular: {
-            type: Boolean,
-            default: false
-        },
-        images: [
-            {
-                url: { type: String, required: true },
-                altText: { type: String, required: true },
-            },
-        ],
-        isActive: {
-            type: Boolean,
-            default: true
-        },
-        isAvailable: {
-            type: Boolean,
-            default: true
-        },
-        createdAt: {
-            type: Date,
-            default: Date.now
-        },
-        updatedAt: {
-            type: Date,
-            default: Date.now
-        },
-        createdBy: {
-            type: Schema.Types.ObjectId,
-            ref: "User"
-        },
-        updatedBy: {
-            type: Schema.Types.ObjectId,
-            ref: "User"
-        },
-        status: {
-            type: String,
-            default: "active"
-        },
-        version: {
-            type: Number,
-            default: 1
-        }
+const bookSchema = new Schema<IBook>({
+    name: {
+        required: true,
+        type: String,
     },
-)
+    description: {
+        required: true,
+        type: String,
+    },
+    categoryId: {
+        required: true,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Category",
+    },
+    language: {
+        required: true,
+        type: String,
+    },
+    author: {
+        required: true,
+        type: String,
+    },
+    edition: {
+        type: String,
+    },
+    coverImage: {
+        type: String,
+    },
+    purchasePrice: {
+        type: Number,
+    },
+    rentalPricePerDay: {
+        required: true,
+        type: Number,
+    },
+    rentalPricePerWeek: {
+        required: true,
+        type: Number,
+    },
+    rentalPricePerMonth: {
+        required: true,
+        type: Number,
+    },
+    securityDeposit: {
+        required: true,
+        type: Number,
+    },
+    availableForSale: {
+        required: true,
+        type: Boolean,
+    },
+    availableForRent: {
+        required: true,
+        type: Boolean,
+    },
+    availabilityStatus: {
+        type: String,
+        required: true,
+        enum: ["available", "rented_out", "sold", "maintenance"],
+        default: "available",
+    },
+    sellerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+    },
+    listingType: {
+        required: true,
+        type: String,
+        enum: ["sale", "rent", "both"],
+    },
+    quantity: {
+        required: true,
+        type: Number,
+        min: 1,
+    },
+    condition: {
+        required: true,
+        type: String,
+        enum: ["new", "used", "like new", "refurbished"],
+    },
+    numberOfPages: {
+        type: Number,
+    },
+    publicationDate: {
+        type: Date,
+    },
+    isPopular: {
+        type: Boolean,
+        default: false,
+    },
+    images: [
+        {
+            url: { type: String, required: true },
+            altText: { type: String, required: true },
+        },
+    ],
+    isActive: {
+        type: Boolean,
+        default: true,
+    },
+    isAvailable: {
+        type: Boolean,
+        default: true,
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now,
+    },
+    createdBy: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+    },
+    updatedBy: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+    },
+    status: {
+        type: String,
+        default: "active",
+    },
+    version: {
+        type: Number,
+        default: 1,
+    },
+});
 const Book = model<IBook>("Book", bookSchema);
 
 export default Book;

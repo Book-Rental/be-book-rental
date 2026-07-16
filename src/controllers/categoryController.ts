@@ -1,9 +1,15 @@
-import { createCategoryService, deleteAllCategoriesService, deleteCategoryService, getAllCategoriesService, getCategoryByIdService, updateCategoryService } from "../services/categoryService";
+import {
+    createCategoryService,
+    deleteAllCategoriesService,
+    deleteCategoryService,
+    getAllCategoriesService,
+    getCategoryByIdService,
+    updateCategoryService,
+} from "../services/categoryService";
 import { Messages } from "../utils/constants";
 import { failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
 import { Request, Response } from "express";
-
 
 export const createCategory = async (req: Request, res: Response) => {
     try {
@@ -14,8 +20,7 @@ export const createCategory = async (req: Request, res: Response) => {
         failResponse(res, err?.message || err, StatusCode.Bad_Request);
         return;
     }
-
-}
+};
 
 export const getAllCategories = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -27,7 +32,6 @@ export const getAllCategories = async (req: Request, res: Response): Promise<voi
         return;
     }
 };
-
 
 export const getCategoryById = async (req: Request, res: Response) => {
     try {
@@ -43,8 +47,7 @@ export const getCategoryById = async (req: Request, res: Response) => {
         failResponse(res, err?.message || err, StatusCode.Bad_Request);
         return;
     }
-}
-
+};
 
 export const updateCategory = async (req: Request, res: Response) => {
     try {
@@ -60,8 +63,7 @@ export const updateCategory = async (req: Request, res: Response) => {
         failResponse(res, err?.message || err, StatusCode.Bad_Request);
         return;
     }
-}
-
+};
 
 export const deleteCategory = async (req: Request, res: Response) => {
     try {
@@ -71,23 +73,18 @@ export const deleteCategory = async (req: Request, res: Response) => {
             failResponse(res, Messages.Category_Not_Found, StatusCode.Not_Found);
             return;
         }
-        successResponse(res, '', Messages.Category_Deleted, StatusCode.OK);
+        successResponse(res, "", Messages.Category_Deleted, StatusCode.OK);
     } catch (err: any) {
         failResponse(res, err?.message || err, StatusCode.Bad_Request);
         return;
     }
-}
+};
 
 export const deleteAllCategories = async (req: Request, res: Response) => {
     try {
         const result = await deleteAllCategoriesService();
 
-        successResponse(
-            res,
-            result,
-            Messages.Category_ALL_Deleted,
-            StatusCode.OK
-        );
+        successResponse(res, result, Messages.Category_ALL_Deleted, StatusCode.OK);
     } catch (err: any) {
         failResponse(res, err?.message || err, StatusCode.Bad_Request);
     }

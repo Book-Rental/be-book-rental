@@ -1,13 +1,13 @@
-import { Router } from 'express';
-import { loginUser, logout, changePassword } from '../controllers/authController';
-import { auth } from '../middlewares/authMiddleware';
-import { validatePassword } from '../middlewares/passwordValidation';
+import { Router } from "express";
+import { loginUser, logout, changePassword } from "../controllers/authController";
+import { auth } from "../middlewares/authMiddleware";
+import { validatePassword } from "../middlewares/passwordValidation";
 
 const router = Router();
 
 // Define routes
-router.post('/login', loginUser);
-router.get('/logout', logout);
-router.post('/changePassword', validatePassword, auth as any, changePassword)
+router.post("/login", loginUser);
+router.get("/logout", logout);
+router.post("/changePassword", validatePassword, auth as any, changePassword);
 
 export default router;

@@ -7,12 +7,12 @@ export const createCategoryService = async (categoryData: ICategory) => {
     } catch (err: any) {
         throw new Error(err?.message || err);
     }
-}
+};
 
 export const getAllCategoriesService = async (isPopular?: boolean | string) => {
     try {
         // Build the filter object based on the incoming value
-        const filter = isPopular === true || isPopular === 'true' ? { isPopular: true } : {};
+        const filter = isPopular === true || isPopular === "true" ? { isPopular: true } : {};
 
         // Pass the filter into the find method
         return await Category.find(filter);
@@ -27,7 +27,7 @@ export const getCategoryByIdService = async (id: string) => {
     } catch (err: any) {
         throw new Error(err?.message || err);
     }
-}
+};
 
 export const updateCategoryService = async (id: string, categoryData: Partial<ICategory>) => {
     try {
@@ -36,18 +36,16 @@ export const updateCategoryService = async (id: string, categoryData: Partial<IC
     } catch (err: any) {
         throw new Error(err?.message || err);
     }
-}
-
+};
 
 export const deleteCategoryService = async (id: string) => {
     try {
         const deletedCategory = await Category.findByIdAndDelete(id);
         return deletedCategory;
-
     } catch (err: any) {
         throw new Error(err?.message || err);
     }
-}
+};
 
 export const deleteAllCategoriesService = async () => {
     try {

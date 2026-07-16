@@ -12,12 +12,12 @@ import { StatusCode } from "../utils/StatusCodes";
 import { Messages } from "../utils/constants";
 
 interface AuthenticatedRequest extends Request {
-  user?: any;
+    user?: any;
 }
 
 const getAuthenticatedUserId = (req: AuthenticatedRequest): string | null => {
-  const user = req.user;
-  return user?.id || user?._id || user?.userId || null;
+    const user = req.user;
+    return user?.id || user?._id || user?.userId || null;
 };
 
 export const getCart = async (req: AuthenticatedRequest, res: Response) => {
