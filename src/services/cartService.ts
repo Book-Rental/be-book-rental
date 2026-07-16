@@ -5,8 +5,9 @@ import { computeCartTotals } from "../utils/cartTotals";
 import { Messages } from "../utils/constants";
 
 const BOOK_POPULATE = {
-    path: "items.bookId",
-    select: "name author description coverImage rentalPricePerDay rentalPricePerWeek rentalPricePerMonth purchasePrice securityDeposit",
+  path: "items.bookId",
+  select:
+    "name author description coverImage rentalPricePerDay rentalPricePerWeek rentalPricePerMonth purchasePrice securityDeposit isActive isAvailable quantity",
 };
 
 const getPopulatedCartWithSummary = async (cartId: mongoose.Types.ObjectId) => {
@@ -14,10 +15,41 @@ const getPopulatedCartWithSummary = async (cartId: mongoose.Types.ObjectId) => {
 
     if (!cart) return null;
 
-    return {
-        ...cart,
-        summary: computeCartTotals(cart as any),
-    };
+  // Reservation rule: reservedQtyForBook = sum(cart quantities for same bookId),
+  const reservedQtyByBook = new Map<string, number>();
+  for (const item of cart.items as any[]) {
+    const populatedBook = (item as any).bookId;
+    const bookId = populatedBook?._id ? String(populatedBook._id) : String((item as any).bookId);
+    reservedQtyByBook.set(
+      bookId,
+      (reservedQtyByBook.get(bookId) ?? 0) + Number((item as any).quantity ?? 1)
+    );
+  }
+
+  const cartWithAvailability = {
+    ...cart,
+    items: cart.items.map((item: any) => {
+      const populatedBook = item.bookId;
+      const bookId = populatedBook?._id ? String(populatedBook._id) : String(item.bookId);
+      const reservedQty = reservedQtyByBook.get(bookId) ?? 0;
+      const inventoryQty = Number(populatedBook?.quantity ?? 0);
+      const effectiveIsAvailable = inventoryQty >= reservedQty;
+
+      return {
+        ...item,
+        bookId: {
+          ...populatedBook,
+          isAvailable: effectiveIsAvailable,
+          isActive: populatedBook?.isActive,
+        },
+      };
+    }),
+  };
+
+  return {
+    ...cartWithAvailability,
+    summary: computeCartTotals(cart as any),
+  };
 };
 
 export const getCartByUserIdService = async (userId: string) => {
@@ -199,5 +231,85 @@ export const clearCartService = async (userId: string) => {
 
     await cart.save();
 
-    return await getPopulatedCartWithSummary(cart._id);
+  return await getPopulatedCartWithSummary(cart._id);
+};
+
+export const validateCartService = async (userId: string) => {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new Error(Messages.Invalid_UserId);
+  }
+
+  const cart = await Cart.findOne({ userId })
+    .populate({
+      path: "items.bookId",
+      select: "quantity isActive isAvailable",
+    })
+    .lean();
+
+  if (!cart || !cart.items?.length) {
+    return {
+      userId,
+      isValid: true,
+      invalidItems: [],
+      validationSummary: {
+        totalItems: 0,
+        invalidCount: 0,
+      },
+    };
+  }
+
+  const reservedQtyByBook = new Map<string, number>();
+  for (const item of cart.items as any[]) {
+    const populatedBook = (item as any).bookId;
+    const bookId = populatedBook?._id
+      ? String(populatedBook._id)
+      : String((item as any).bookId);
+
+    reservedQtyByBook.set(
+      bookId,
+      (reservedQtyByBook.get(bookId) ?? 0) + Number((item as any).quantity ?? 1)
+    );
+  }
+
+  const invalidItems: Array<{ bookId: string; reason: string }> = [];
+
+  for (const item of cart.items as any[]) {
+    const populatedBook = item.bookId;
+    const bookId = populatedBook?._id ? String(populatedBook._id) : String(item.bookId);
+
+    const reservedQty = reservedQtyByBook.get(bookId) ?? 0;
+    const inventoryQty = Number(populatedBook?.quantity ?? 0);
+
+    const isAvailableNow = inventoryQty >= reservedQty;
+    const isActiveNow = populatedBook?.isActive ?? true;
+
+    if (!isActiveNow) {
+      invalidItems.push({ bookId, reason: Messages.Book_Inactive });
+      continue;
+    }
+
+    if (!isAvailableNow) {
+      invalidItems.push({
+        bookId,
+        reason: Messages.Insufficient_Quantity,
+      });
+    }
+  }
+
+  const deduped = new Map<string, { bookId: string; reason: string }>();
+  for (const inv of invalidItems) {
+    if (!deduped.has(inv.bookId)) deduped.set(inv.bookId, inv);
+  }
+
+  const invalidItemsUnique = Array.from(deduped.values());
+
+  return {
+    userId,
+    isValid: invalidItemsUnique.length === 0,
+    invalidItems: invalidItemsUnique,
+    validationSummary: {
+      totalItems: cart.items.length,
+      invalidCount: invalidItemsUnique.length,
+    },
+  };
 };
