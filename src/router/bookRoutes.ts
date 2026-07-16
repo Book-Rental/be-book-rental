@@ -20,5 +20,4 @@ router.get("/:id", getBookById);
 router.delete("/:id", deleteBookById);
 router.put("/update/:id", cpUpload, updateBookById);
 
-
 export default router;
