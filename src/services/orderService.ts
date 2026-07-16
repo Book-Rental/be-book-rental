@@ -4,8 +4,7 @@ import { IOrder } from "../models/orderInteface";
 import User from "../models/User";
 import { PaymentStatus } from "../utils/constants";
 
-
-//getAll Order 
+//getAll Order
 export const getAllOrdersService = async () => {
     try {
         return await Order.find();
@@ -14,8 +13,7 @@ export const getAllOrdersService = async () => {
     }
 };
 
-
-//get By Order 
+//get By Order
 export const getOrderByOrderIdService = async (orderId: string) => {
     try {
         return await Order.findById(orderId);
@@ -24,7 +22,7 @@ export const getOrderByOrderIdService = async (orderId: string) => {
     }
 };
 
-//Create Order 
+//Create Order
 export const createOrderService = async (orderData: any) => {
     try {
         const {
