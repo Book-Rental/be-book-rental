@@ -1,8 +1,10 @@
 import mongoose from "mongoose";
 import {
     createOrderService,
+    deleteOrderByIdService,
     getAllOrdersService,
     getOrderByOrderIdService,
+    getOrderByUserIdService,
 } from "../services/orderService";
 import { Messages } from "../utils/constants";
 import { failResponse, successResponse } from "../utils/response";
@@ -13,7 +15,7 @@ import { OrderType } from "../models/Order";
 //get all orders
 export const getAllOrders = async (req: Request, res: Response): Promise<void> => {
     try {
-        const orders = await getAllOrdersService();
+        const orders = await getAllOrdersService(req.query as any);
         successResponse(res, orders, Messages.Order_Fetch_success, StatusCode.OK);
     } catch (error) {
         console.error("Get All Orders Error:", error);
@@ -40,34 +42,34 @@ export const getOrderById = async (req: Request, res: Response): Promise<void> =
 //create Order
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
     try {
+        const orderData = req.body;
+
         const {
-            customerId,
+            userId,
             items,
             deliveryAddress,
             paymentMethod,
-            discount,
-            deliveryCharge,
+            subtotal,
+            securityDepositTotal,
+            deliveryFee,
             tax,
-            createdBy,
-        } = req.body;
+            discount,
+            total,
+        } = orderData;
 
-        // ===========================
-        // Customer Validation
-        // ===========================
-        if (!customerId) {
-            failResponse(res, "Customer Id is required.", StatusCode.Bad_Request);
+        // ================= User Validation =================
+        if (!userId) {
+            failResponse(res, "User Id is required.", StatusCode.Bad_Request);
             return;
         }
 
-        if (!mongoose.Types.ObjectId.isValid(customerId)) {
-            failResponse(res, "Invalid Customer Id.", StatusCode.Bad_Request);
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
             return;
         }
 
-        // ===========================
-        // Items Validation
-        // ===========================
-        if (!items || !Array.isArray(items) || items.length === 0) {
+        // ================= Items Validation =================
+        if (!Array.isArray(items) || items.length === 0) {
             failResponse(res, "At least one book is required.", StatusCode.Bad_Request);
             return;
         }
@@ -79,78 +81,40 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             }
 
             if (!mongoose.Types.ObjectId.isValid(item.bookId)) {
-                failResponse(res, `Invalid Book Id : ${item.bookId}`, StatusCode.Bad_Request);
+                failResponse(res, "Invalid Book Id.", StatusCode.Bad_Request);
                 return;
             }
 
-            if (!item.orderType) {
-                failResponse(res, "Order Type is required.", StatusCode.Bad_Request);
-                return;
-            }
-
-            if (item.orderType !== OrderType.BUY && item.orderType !== OrderType.RENT) {
+            if (!["buy", "rent"].includes(item.orderType)) {
                 failResponse(res, "Invalid Order Type.", StatusCode.Bad_Request);
                 return;
             }
 
-            if (!item.quantity || item.quantity < 1) {
+            if (!item.quantity || item.quantity <= 0) {
                 failResponse(res, "Quantity should be greater than zero.", StatusCode.Bad_Request);
                 return;
             }
 
-            if (item.orderType === OrderType.RENT) {
+            if (item.orderType === "rent") {
                 if (!item.rentalDuration) {
-                    failResponse(res, "Rental duration is required.", StatusCode.Bad_Request);
+                    failResponse(res, "Rental Duration is required.", StatusCode.Bad_Request);
                     return;
                 }
 
-                if (!item.rentStartDate) {
-                    failResponse(res, "Rent Start Date is required.", StatusCode.Bad_Request);
-                    return;
-                }
-
-                if (!item.expectedReturnDate) {
-                    failResponse(res, "Expected Return Date is required.", StatusCode.Bad_Request);
-                    return;
-                }
-
-                const rentDate = new Date(item.rentStartDate);
-                const returnDate = new Date(item.expectedReturnDate);
-
-                if (returnDate <= rentDate) {
-                    failResponse(
-                        res,
-                        "Expected Return Date should be greater than Rent Start Date.",
-                        StatusCode.Bad_Request
-                    );
+                if (!item.rentStartDate || !item.expectedReturnDate) {
+                    failResponse(res, "Rent dates are required.", StatusCode.Bad_Request);
                     return;
                 }
             }
         }
 
-        // ===========================
-        // Address Validation
-        // ===========================
+        // ================= Address Validation =================
         if (!deliveryAddress) {
             failResponse(res, "Delivery address is required.", StatusCode.Bad_Request);
             return;
         }
 
-        const { street, city, state, zipCode, country, phone } = deliveryAddress;
-
-        if (!street || !city || !state || !zipCode || !country || !phone) {
-            failResponse(res, "Complete delivery address is required.", StatusCode.Bad_Request);
-            return;
-        }
-
-        // ===========================
-        // Payment Validation
-        // ===========================
-        if (!paymentMethod) {
-            failResponse(res, "Payment Method is required.", StatusCode.Bad_Request);
-            return;
-        }
-
+        // ================= Payment Validation =================
         const paymentMethods = ["COD", "UPI", "CARD", "NET_BANKING"];
 
         if (!paymentMethods.includes(paymentMethod)) {
@@ -158,24 +122,69 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             return;
         }
 
-        // ===========================
-        // Create Order
-        // ===========================
-        const order = await createOrderService({
-            customerId,
-            items,
-            deliveryAddress,
-            paymentMethod,
-            discount: discount || 0,
-            deliveryCharge: deliveryCharge || 0,
-            tax: tax || 0,
-            createdBy,
-        } as any);
+        // ================= Amount Validation =================
+        if (subtotal < 0 || total <= 0) {
+            failResponse(res, "Invalid order amount.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const order = await createOrderService(orderData);
 
         successResponse(res, order, Messages.OrderCreated, StatusCode.Created);
     } catch (error: any) {
-        console.error("Create Order Error:", error);
+        console.error(error);
 
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+//Get Order By User Id
+export const getOrderByUserId = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { userId } = req.params as { userId?: string };
+        if (!userId) {
+            failResponse(res, "User Id is required.", StatusCode.Bad_Request);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const orders = await getOrderByUserIdService(userId, req.query);
+        successResponse(res, orders, Messages.Order_Fetch_success, StatusCode.OK);
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+//Delete Order
+export const deleteOrderById = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { orderId } = req.params as { orderId?: string };
+        if (!orderId) {
+            failResponse(res, "Order Id is required.", StatusCode.Bad_Request);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            failResponse(res, "Invalid Order Id.", StatusCode.Bad_Request);
+            return;
+        }
+        const order = await deleteOrderByIdService(orderId);
+        if (!order) {
+            failResponse(res, Messages.Order_Not_Found, StatusCode.Bad_Request);
+        }
+        successResponse(res, null, Messages.Order_Deleted, StatusCode.No_Content);
+    } catch (error: any) {
         failResponse(
             res,
             error.message || Messages.Internal_Server_Error,

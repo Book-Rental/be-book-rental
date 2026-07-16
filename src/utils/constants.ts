@@ -184,12 +184,6 @@ export const PaymentMethod = {
     COD: "COD",
 };
 
-export const PaymentStatus = {
-    Pending: "Pending",
-    Paid: "Paid",
-    Failed: "Failed",
-};
-
 export const orderAllowedUpdates = [
     "orderStatus",
     "shippingAddress",
