@@ -9,6 +9,7 @@ import {
     createBookService,
     deleteBookByIdService,
     getBookByIdService,
+    getBooksBySellerIdService,
     updateBookByIdService,
 } from "../services/bookService";
 
@@ -137,6 +138,21 @@ export const getBookById = async (req: Request, res: Response) => {
         return successResponse(res, book, Messages.Book_Found_Successfully, StatusCode.OK);
     } catch (err: any) {
         failResponse(res, err.message || Messages.Internal_Server_Error, StatusCode.Bad_Request);
+    }
+};
+
+export const getBooksBySellerId = async (req: Request, res: Response) => {
+    try {
+        const sellerId = req.params.sellerId as string;
+        const books = await getBooksBySellerIdService(sellerId);
+
+        return successResponse(res, { books }, Messages.Book_Fetched_Successfully, StatusCode.OK);
+    } catch (err: any) {
+        return failResponse(
+            res,
+            err.message || Messages.Internal_Server_Error,
+            StatusCode.Bad_Request
+        );
     }
 };
 

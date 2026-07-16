@@ -42,3 +42,11 @@ export const updateBookByIdService = async (id: string, data: Partial<IBook>) =>
         throw err;
     }
 };
+
+export const getBooksBySellerIdService = async (sellerId: string) => {
+    try {
+        return await Book.find({ sellerId });
+    } catch (err) {
+        throw err;
+    }
+};

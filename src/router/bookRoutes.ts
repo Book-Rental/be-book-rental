@@ -4,6 +4,7 @@ import {
     deleteBookById,
     getAllBooks,
     getBookById,
+    getBooksBySellerId,
     updateBookById,
 } from "../controllers/bookController";
 import upload from "../utils/upload";
@@ -17,6 +18,7 @@ const cpUpload = upload.fields([
 router.get("/", getAllBooks);
 router.post("/create", cpUpload, createBook);
 router.get("/:id", getBookById);
+router.get("/seller/:sellerId", getBooksBySellerId);
 router.delete("/:id", deleteBookById);
 router.put("/update/:id", cpUpload, updateBookById);
 
