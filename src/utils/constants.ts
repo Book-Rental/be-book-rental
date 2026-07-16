@@ -82,6 +82,7 @@ export const Messages = {
     Book_Not_Found: "Book not found",
     Book_Is_Not_Found: "Book is not found",
     Book_Created_Successfully: "Book created successfully",
+    Book_Fetched_Successfully: "Books fetched successfully",
     Book_Updated_Successfully: "Book updated successfully",
     Book_Deleted_Successfully: "Book deleted successfully",
     Book_Found_Successfully: "Book found successfully",

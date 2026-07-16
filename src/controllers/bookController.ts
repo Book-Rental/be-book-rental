@@ -45,7 +45,7 @@ export const createBook = async (req: Request, res: Response) => {
         const files = req.files as { [key: string]: Express.Multer.File[] };
 
         let coverImageUrl: string | undefined = undefined;
-        
+
         // 1. Process Single Cover Image in controller
         if (files?.coverImage?.[0]) {
             const coverFile = files.coverImage[0];
@@ -85,7 +85,7 @@ export const createBook = async (req: Request, res: Response) => {
         const bookPayload = {
             ...body,
             coverImage: coverImageUrl,
-            images: alternativeImages,
+            images: alternativeImages, // Now successfully satisfies your subdocument constraint!
             sellerId: body.sellerId || authenticatedUserId,
             createdBy: authenticatedUserId,
         };
@@ -137,11 +137,7 @@ export const getBookById = async (req: Request, res: Response) => {
 
         return successResponse(res, book, Messages.Book_Found_Successfully, StatusCode.OK);
     } catch (err: any) {
-        return failResponse(
-            res,
-            err.message || Messages.Internal_Server_Error,
-            StatusCode.Bad_Request
-        );
+        failResponse(res, err.message || Messages.Internal_Server_Error, StatusCode.Bad_Request);
     }
 };
 
@@ -150,7 +146,7 @@ export const getBooksBySellerId = async (req: Request, res: Response) => {
         const sellerId = req.params.sellerId as string;
         const books = await getBooksBySellerIdService(sellerId);
 
-        return successResponse(res, { books }, "Books fetched successfully", StatusCode.OK);
+        return successResponse(res, { books }, Messages.Book_Fetched_Successfully, StatusCode.OK);
     } catch (err: any) {
         return failResponse(
             res,
@@ -214,12 +210,12 @@ export const updateBookById = async (req: Request, res: Response) => {
         if (updateData.rentalPricePerDay)
             updateData.rentalPricePerDay = parseFloat(updateData.rentalPricePerDay);
 
-         // Track who initialized this content change
+        // Track who initialized this content change
         const authenticatedUserId = (req as any).user?.id;
         updateData.updatedBy = authenticatedUserId;
         updateData.updatedAt = new Date();
 
-         // 5. Submit update operation to service layer
+        // 5. Submit update operation to service layer
         const updatedBook = await updateBookByIdService(bookId, updateData);
 
         return successResponse(
