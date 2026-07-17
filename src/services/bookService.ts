@@ -52,8 +52,7 @@ export const getBooksBySellerIdService = async (sellerId: string, query: any) =>
         const totalPages = Math.ceil(totalRecords / limit);
 
         const hasMore = page < totalPages;
-        const books = await Book.find({ sellerId }).skip(skip)
-            .limit(limit);;
+        const books = await Book.find({ sellerId }).skip(skip).limit(limit);
 
         return {
             books,
@@ -64,7 +63,7 @@ export const getBooksBySellerIdService = async (sellerId: string, query: any) =>
                 limit,
                 hasMore,
             },
-        }
+        };
     } catch (err) {
         throw err;
     }

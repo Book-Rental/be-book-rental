@@ -170,7 +170,6 @@ export const createOrderService = async (orderData: any) => {
                 Number(tax) -
                 Number(discount);
 
-
             // Validate subtotal
             if (Number(subtotal) !== calculatedSubtotal) {
                 throw new Error(
@@ -214,15 +213,10 @@ export const createOrderService = async (orderData: any) => {
                 sellerId: book.sellerId,
                 orderType: item.orderType,
                 quantity: item.quantity,
-                rentalPrice:
-                    item.orderType === OrderType.RENT
-                        ? rentalPrice
-                        : 0,
+                rentalPrice: item.orderType === OrderType.RENT ? rentalPrice : 0,
 
                 securityDeposit:
-                    item.orderType === OrderType.RENT
-                        ? Number(book.securityDeposit)
-                        : 0,
+                    item.orderType === OrderType.RENT ? Number(book.securityDeposit) : 0,
                 rentStartDate: item.rentStartDate || null,
                 expectedReturnDate: item.expectedReturnDate || null,
                 actualReturnDate: null,
@@ -294,10 +288,13 @@ export const getOrderByUserIdService = async (userId: string, query: any = {}) =
         const totalPages = Math.ceil(totalRecords / limit);
         const hasMore = page < totalPages;
 
-        const orders = await Order.find(filter).populate({
-            path: "items.bookId",
-            select: "name author coverImage",
-        }).skip(skip).limit(limit);
+        const orders = await Order.find(filter)
+            .populate({
+                path: "items.bookId",
+                select: "name author coverImage",
+            })
+            .skip(skip)
+            .limit(limit);
 
         return {
             orders,
@@ -323,10 +320,7 @@ export const deleteOrderByIdService = async (orderId: string) => {
     }
 };
 
-export const getOrderBookDetailsService = async (
-    orderId: string,
-    bookId: string
-) => {
+export const getOrderBookDetailsService = async (orderId: string, bookId: string) => {
     const order: any = await Order.findById(orderId).populate({
         path: "items.bookId",
         select: "name author coverImage",
@@ -336,9 +330,7 @@ export const getOrderBookDetailsService = async (
         throw new Error("Order not found.");
     }
 
-    const orderItem = order.items.find(
-        (item: any) => item.bookId?._id.toString() === bookId
-    );
+    const orderItem = order.items.find((item: any) => item.bookId?._id.toString() === bookId);
 
     if (!orderItem) {
         throw new Error("Book not found in this order.");

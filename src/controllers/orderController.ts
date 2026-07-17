@@ -194,13 +194,9 @@ export const deleteOrderById = async (req: Request, res: Response): Promise<void
     }
 };
 
-
-export const getOrderBookDetails = async (
-    req: Request,
-    res: Response
-): Promise<void> => {
+export const getOrderBookDetails = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { orderId, bookId } = req.params as { orderId: string, bookId: string };
+        const { orderId, bookId } = req.params as { orderId: string; bookId: string };
 
         if (!mongoose.Types.ObjectId.isValid(orderId)) {
             failResponse(res, "Invalid Order Id", StatusCode.Bad_Request);
@@ -214,12 +210,7 @@ export const getOrderBookDetails = async (
 
         const orderItem = await getOrderBookDetailsService(orderId, bookId);
 
-        successResponse(
-            res,
-            orderItem,
-            "Order book details fetched successfully",
-            StatusCode.OK
-        );
+        successResponse(res, orderItem, "Order book details fetched successfully", StatusCode.OK);
     } catch (error: any) {
         failResponse(
             res,
