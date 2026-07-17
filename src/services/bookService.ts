@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Book, { IBook } from "../models/Book";
+import { buildPaginationQuery } from "../utils/appFunctions";
 
 export const createBookService = async (data: Partial<IBook>) => {
     try {
@@ -43,9 +44,27 @@ export const updateBookByIdService = async (id: string, data: Partial<IBook>) =>
     }
 };
 
-export const getBooksBySellerIdService = async (sellerId: string) => {
+export const getBooksBySellerIdService = async (sellerId: string, query: any) => {
     try {
-        return await Book.find({ sellerId });
+        const { skip, limit, page } = buildPaginationQuery(query);
+        const totalRecords = await Book.countDocuments({ sellerId });
+
+        const totalPages = Math.ceil(totalRecords / limit);
+
+        const hasMore = page < totalPages;
+        const books = await Book.find({ sellerId }).skip(skip)
+            .limit(limit);;
+
+        return {
+            books,
+            meta: {
+                totalRecords,
+                totalPages,
+                currentPage: page,
+                limit,
+                hasMore,
+            },
+        }
     } catch (err) {
         throw err;
     }
