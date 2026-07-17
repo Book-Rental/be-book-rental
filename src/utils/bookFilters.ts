@@ -1,15 +1,43 @@
-import mongoose, { FilterQuery, Types } from "mongoose";
+import { FilterQuery, Types } from "mongoose";
 import { IBook } from "../models/Book";
 import Category from "../models/Category";
 
-// Function to build the filter object
+//  * Decode search text safely.
+
+const decodeSearchText = (text: string): string => {
+    return decodeURIComponent(text.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"));
+};
+
+//  * Convert query string to boolean.
+
+const toBoolean = (value: any): boolean => {
+    return String(value).toLowerCase() === "true";
+};
+
+//  * Fetch matching category ids.
+
+const getCategoryIds = async (keyword: string) => {
+    const categories = await Category.find({
+        name: {
+            $regex: keyword,
+            $options: "i",
+        },
+    }).select("_id");
+
+    return categories.map((category) => category._id);
+};
+
+//  * Build MongoDB Filter
 
 export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
     const filter: FilterQuery<IBook> = {};
+    const andConditions: FilterQuery<IBook>[] = [];
 
     try {
         const {
             categoryID,
+            categoryName,
+            search,
             name,
             language,
             minPrice,
@@ -18,60 +46,55 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
             isAvailable,
             availableForSale,
             availableForRent,
-            categoryName,
         } = query;
 
-        // Filter by Category ID
+        //  * Category Id
+
         if (categoryID && Types.ObjectId.isValid(categoryID)) {
             filter.categoryId = new Types.ObjectId(categoryID);
         }
 
-        //Filter by Category Name
+        //  * Category Name
+
         if (categoryName?.trim()) {
             const categoryNames = categoryName
                 .split(",")
-                .map((name: string) => name.trim())
+                .map((item: string) => item.trim())
                 .filter(Boolean);
 
             const categories = await Category.find({
-                $or: categoryNames.map((name: string) => ({
+                $or: categoryNames.map((item: string) => ({
                     name: {
-                        $regex: name,
+                        $regex: item,
                         $options: "i",
                     },
                 })),
             }).select("_id");
 
-            filter.categoryId =
-                categories.length > 0
-                    ? {
-                          $in: categories.map((category) => category._id),
-                      }
-                    : {
-                          $in: [],
-                      };
+            filter.categoryId = {
+                $in: categories.map((item) => item._id),
+            };
         }
 
-        // Global Search (Book Name + Author + Category Name)
-        if (name?.trim()) {
-            let keyword = name.replace(/%(?![0-9A-Fa-f]{2})/g, "%25");
-            keyword = decodeURIComponent(keyword);
+        //  * Global Search
+        //  * Search In:
+        //  * 1. Book Name
+        //  * 2. Author
+        //  * 3. Category
 
-            // Find matching categories
-            const categories = await Category.find({
-                name: {
-                    $regex: keyword,
-                    $options: "i",
-                },
-            }).select("_id");
+        if (search?.trim()) {
+            const keyword = decodeSearchText(search);
 
-            const orConditions: FilterQuery<IBook>[] = [
+            const categoryIds = await getCategoryIds(keyword);
+
+            const searchConditions: FilterQuery<IBook>[] = [
                 {
                     name: {
                         $regex: keyword,
                         $options: "i",
                     },
                 },
+
                 {
                     author: {
                         $regex: keyword,
@@ -80,155 +103,264 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
                 },
             ];
 
-            // Search by Category
-            if (categories.length > 0) {
-                orConditions.push({
+            if (categoryIds.length) {
+                searchConditions.push({
                     categoryId: {
-                        $in: categories.map((category) => category._id),
+                        $in: categoryIds,
                     },
                 });
             }
 
-            filter.$or = orConditions;
+            andConditions.push({
+                $or: searchConditions,
+            });
         }
 
-        // Language Filter
-        if (language?.trim()) {
-            // If the user passes "all", do not apply any language filter (returns all data)
-            if (language.trim().toLowerCase() !== "all") {
-                filter.language = {
-                    $in: language
-                        .split(",")
-                        .map((lang: string) => new RegExp(`^${lang.trim()}$`, "i")),
-                };
-            }
+        //  * Name Filter
+        //  * Search Only:
+        //  * 1. Book Name
+        //  * 2. Author
+
+        if (name?.trim()) {
+            const keyword = decodeSearchText(name);
+
+            andConditions.push({
+                $or: [
+                    {
+                        name: {
+                            $regex: keyword,
+                            $options: "i",
+                        },
+                    },
+
+                    {
+                        author: {
+                            $regex: keyword,
+                            $options: "i",
+                        },
+                    },
+                ],
+            });
         }
 
-        // Purchase Price
-        if (minPrice || maxPrice) {
+        //  * Language Filter
+
+        const lang = language?.trim();
+
+        if (lang && lang.toLowerCase() !== "all") {
+            filter.language = {
+                $in: lang.split(",").map((item: string) => new RegExp(`^${item.trim()}$`, "i")),
+            };
+        }
+
+        //  * Purchase Price Filter
+
+        const min = Number(minPrice);
+        const max = Number(maxPrice);
+
+        if (!isNaN(min) || !isNaN(max)) {
             filter.purchasePrice = {};
 
-            if (minPrice) {
-                filter.purchasePrice.$gte = Number(minPrice);
+            if (!isNaN(min)) {
+                filter.purchasePrice.$gte = min;
             }
 
-            if (maxPrice) {
-                filter.purchasePrice.$lte = Number(maxPrice);
+            if (!isNaN(max)) {
+                filter.purchasePrice.$lte = max;
             }
         }
 
-        // Boolean Filters
+        //  * Boolean Filters
+
         if (isPopular !== undefined) {
-            filter.isPopular = isPopular === "true";
+            filter.isPopular = toBoolean(isPopular);
         }
 
         if (isAvailable !== undefined) {
-            filter.isAvailable = isAvailable === "true";
+            filter.isAvailable = toBoolean(isAvailable);
         }
 
         if (availableForSale !== undefined) {
-            filter.availableForSale = availableForSale === "true";
+            filter.availableForSale = toBoolean(availableForSale);
         }
 
         if (availableForRent !== undefined) {
-            filter.availableForRent = availableForRent === "true";
+            filter.availableForRent = toBoolean(availableForRent);
+        }
+
+        //  * Attach AND Conditions
+
+        if (andConditions.length) {
+            filter.$and = andConditions;
         }
 
         return filter;
-    } catch (err) {
-        console.error("Filter Query Error:", err);
+    } catch (error) {
+        console.error("Filter Builder Error:", error);
+
         return filter;
     }
 };
 
-// Function to get sort option
-export const getSortOption = (sortBy: string | undefined): { [key: string]: 1 | -1 } => {
+//  * Get Sort Option
+
+export const getSortOption = (sortBy?: string): Record<string, 1 | -1> => {
     switch (sortBy) {
         case "priceLowToHigh":
-            return { purchasePrice: 1 };
+            return {
+                purchasePrice: 1,
+            };
+
         case "priceHighToLow":
-            return { purchasePrice: -1 };
+            return {
+                purchasePrice: -1,
+            };
+
         case "nameAToZ":
-            return { name: 1 };
+            return {
+                name: 1,
+            };
+
         case "nameZToA":
-            return { name: -1 };
+            return {
+                name: -1,
+            };
+
+        case "latest":
+            return {
+                createdAt: -1,
+            };
+
+        case "oldest":
+            return {
+                createdAt: 1,
+            };
+
+        case "popular":
+            return {
+                isPopular: -1,
+                createdAt: -1,
+            };
+
         default:
-            return { createdAt: -1 };
+            return {
+                createdAt: -1,
+            };
     }
 };
 
-// Function for pagination
-export const getPagination = (page: number, limit: number) => {
-    const pageNum = parseInt(page as unknown as string, 10) || 1;
-    const limitNum = parseInt(limit as unknown as string, 10) || 10;
+//  * Pagination
+
+export const getPagination = (page?: number | string, limit?: number | string) => {
+    const pageNum = Math.max(1, Number(page) || 1);
+
+    const limitNum = Math.max(1, Number(limit) || 10);
+
     const skip = (pageNum - 1) * limitNum;
-    return { pageNum, limitNum, skip };
+
+    return {
+        pageNum,
+        limitNum,
+        skip,
+    };
 };
 
-// Aggregation pipeline builder for Books
+//  * Build Pagination Metadata
+
+export const buildPaginationMeta = (totalRecords: number, page: number, limit: number) => {
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    return {
+        totalRecords,
+        totalPages,
+        currentPage: page,
+        limit,
+        hasMore: page < totalPages,
+    };
+};
+
+//  * Build Aggregation Pipeline
 export const buildBookAggregationPipeline = async (
     filterQuery: any,
-    sortBy: string | undefined,
-    page: number,
-    limit: number
+    sortBy?: string,
+    page: number = 1,
+    limit: number = 10
 ) => {
     const filter = await buildFilter(filterQuery);
+
     const sortOption = getSortOption(sortBy);
-    const { limitNum, skip } = getPagination(page, limit);
+
+    const { skip, limitNum } = getPagination(page, limit);
 
     return [
-        { $match: filter },
+        //  * Apply Filters
 
-        // Lookup to get category details mapping to categoryId
+        {
+            $match: filter,
+        },
+
+        //  * Join Category Collection
+
         {
             $lookup: {
                 from: "categories",
                 localField: "categoryId",
                 foreignField: "_id",
-                as: "categoryDetails",
+                as: "category",
             },
         },
 
-        { $unwind: { path: "$categoryDetails", preserveNullAndEmptyArrays: true } },
+        //  * Convert category array into object
 
-        // Projection matching your exact Book schema
         {
-            $project: {
-                name: 1,
-                description: 1,
-                language: 1,
-                author: 1,
-                edition: 1,
-                coverImage: 1,
-                images: 1,
-                quantity: 1,
-                purchasePrice: 1,
-                rentalPricePerDay: 1,
-                rentalPricePerWeek: 1,
-                rentalPricePerMonth: 1,
-                securityDeposit: 1,
-                availableForSale: 1,
-                availableForRent: 1,
-                sellerId: 1,
-                listingType: 1,
-                condition: 1,
-                numberOfPages: 1,
-                publicationDate: 1,
-                isPopular: 1,
-                isAvailable: 1,
-                availabilityStatus: 1,
-                isActive: 1,
-                status: 1,
-                createdAt: 1,
+            $unwind: {
+                path: "$category",
+                preserveNullAndEmptyArrays: true,
+            },
+        },
+
+        //  * Category Object
+
+        {
+            $addFields: {
                 category: {
-                    id: "$categoryDetails._id",
-                    name: "$categoryDetails.name",
+                    id: "$category._id",
+                    name: "$category.name",
                 },
             },
         },
 
-        { $sort: sortOption },
-        { $skip: skip },
-        { $limit: limitNum },
+        //  * Remove unwanted fields
+
+        {
+            $project: {
+                __v: 0,
+                "category.__v": 0,
+                "category.createdAt": 0,
+                "category.updatedAt": 0,
+                "category.createdBy": 0,
+                "category.updatedBy": 0,
+                "category.description": 0,
+                "category.status": 0,
+                "category.version": 0,
+                "category.isActive": 0,
+            },
+        },
+
+        //  Sort
+
+        {
+            $sort: sortOption,
+        },
+
+        //  * Pagination
+
+        {
+            $skip: skip,
+        },
+
+        {
+            $limit: limitNum,
+        },
     ];
 };

@@ -144,7 +144,7 @@ export const getBookById = async (req: Request, res: Response) => {
 export const getBooksBySellerId = async (req: Request, res: Response) => {
     try {
         const sellerId = req.params.sellerId as string;
-        const books = await getBooksBySellerIdService(sellerId);
+        const books = await getBooksBySellerIdService(sellerId, req.query);
 
         return successResponse(res, { books }, Messages.Book_Fetched_Successfully, StatusCode.OK);
     } catch (err: any) {
