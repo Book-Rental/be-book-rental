@@ -64,7 +64,17 @@ export const getAllOrdersService = async (query: {
 //get By Order
 export const getOrderByOrderIdService = async (orderId: string) => {
     try {
-        return await Order.findById(orderId);
+        const order = await Order.findById(orderId)
+            .populate({
+                path: "items.bookId",
+                select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit",
+            });
+
+        if (!order) {
+            throw new Error("Order not found.");
+        }
+
+        return order;
     } catch (error) {
         return error;
     }
