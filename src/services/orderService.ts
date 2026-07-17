@@ -311,6 +311,66 @@ export const getOrderByUserIdService = async (userId: string, query: any = {}) =
     }
 };
 
+// Seller dashboard: orders that contain at least one item for the seller,
+// and each returned order's items are filtered to only seller-owned items.
+export const getSellerOrdersService = async (sellerUserId: string, query: any = {}) => {
+    try {
+        const { skip, limit, page } = buildPaginationQuery(query);
+        const orderStatus = query.orderStatus;
+
+        const filter: any = {
+            "items.sellerId": sellerUserId,
+        };
+
+        // Optional orderStatus filter to match existing conventions.
+        // if (orderStatus && orderStatus !== "ALL") {
+        //     filter.orderStatus = orderStatus;
+        // }
+
+        const totalRecords = await Order.countDocuments(filter);
+        const totalPages = Math.ceil(totalRecords / limit);
+        const hasMore = page < totalPages;
+
+        const orders = await Order.find(filter)
+            .populate({
+                path: "items.bookId",
+                select: "name author coverImage ",
+            })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        const filteredOrders = orders
+            .map((order: any) => {
+                const sellerItems = (order.items || []).filter((it: any) => {
+                    if (!it?.sellerId) return false;
+                    return it.sellerId.toString() === sellerUserId;
+                });
+
+                if (!sellerItems.length) return null;
+
+                return {
+                    ...order.toObject?.(),
+                    items: sellerItems,
+                };
+            })
+            .filter(Boolean);
+
+        return {
+            orders: filteredOrders,
+            meta: {
+                totalRecords,
+                totalPages,
+                currentPage: page,
+                limit,
+                hasMore,
+            },
+        };
+    } catch (error) {
+        throw error;
+    }
+};
+
 export const deleteOrderByIdService = async (orderId: string) => {
     try {
         const result = await Order.findByIdAndDelete(orderId);

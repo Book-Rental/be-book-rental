@@ -6,6 +6,7 @@ import {
     getOrderBookDetailsService,
     getOrderByOrderIdService,
     getOrderByUserIdService,
+    getSellerOrdersService,
 } from "../services/orderService";
 import { Messages } from "../utils/constants";
 import { failResponse, successResponse } from "../utils/response";
@@ -219,3 +220,31 @@ export const getOrderBookDetails = async (req: Request, res: Response): Promise<
         );
     }
 };
+
+// Seller dashboard orders: returns only orders/items for the authenticated seller.
+export const getSellerOrders = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const authUser: any = (req as any).user;
+        const sellerUserId: string | undefined = authUser?.id || authUser?._id || authUser?.userId;
+
+        if (!sellerUserId) {
+            failResponse(res, "Unauthorized", StatusCode.Unauthorized);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(sellerUserId)) {
+            failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const orders = await getSellerOrdersService(sellerUserId, req.query);
+        successResponse(res, orders, Messages.Order_Fetch_success, StatusCode.OK);
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+
