@@ -12,7 +12,8 @@ export interface ICartItem {
 }
 
 export interface ICart extends mongoose.Document {
-    userId: mongoose.Types.ObjectId;
+    userId?: mongoose.Types.ObjectId;
+    anonymousId?: string;
     items: ICartItem[];
     createdAt: Date;
     updatedAt: Date;
@@ -56,7 +57,14 @@ const cartSchema = new Schema<ICart>(
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: [true, Messages.User_Id_Required],
+            required: false,
+            sparse: true,
+            unique: true,
+        },
+        anonymousId: {
+            type: String,
+            required: false,
+            sparse: true,
             unique: true,
         },
         items: [cartItemSchema],
@@ -66,7 +74,14 @@ const cartSchema = new Schema<ICart>(
 
 // Helpful when updating quantity/remove
 cartSchema.index({ userId: 1 });
+cartSchema.index({ anonymousId: 1 });
 cartSchema.index({ userId: 1, "items.bookId": 1, "items.pricingMode": 1, "items.rentalPeriod": 1 });
+cartSchema.index({
+    anonymousId: 1,
+    "items.bookId": 1,
+    "items.pricingMode": 1,
+    "items.rentalPeriod": 1,
+});
 
 const Cart = mongoose.model<ICart>("Cart", cartSchema);
 export default Cart;
