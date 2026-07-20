@@ -1,4 +1,5 @@
 export const JWT_TOKEN_NAME = "Authorization";
+export const GUEST_COOKIE_NAME = "guest";
 
 export const Messages = {
     // =========================

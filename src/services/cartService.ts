@@ -3,6 +3,7 @@ import Cart from "../models/Cart";
 import Book from "../models/Book";
 import { computeCartTotals } from "../utils/cartTotals";
 import { Messages } from "../utils/constants";
+import { CartIdentity } from "../middlewares/resolveCartIdentity";
 
 const BOOK_POPULATE = {
     path: "items.bookId",
@@ -53,19 +54,45 @@ const getPopulatedCartWithSummary = async (cartId: mongoose.Types.ObjectId) => {
     };
 };
 
-export const getCartByUserIdService = async (userId: string) => {
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
+// ---- Identity helpers ----
+
+type CartFilter = {
+    userId?: string;
+    anonymousId?: string;
+};
+
+const identityToFilter = (identity: CartIdentity): CartFilter => {
+    const filter: CartFilter = {};
+    if (identity.userId) filter.userId = identity.userId;
+    if (identity.anonymousId) filter.anonymousId = identity.anonymousId;
+    return filter;
+};
+
+const validateIdentity = (identity: CartIdentity): void => {
+    if (identity.userId && !mongoose.Types.ObjectId.isValid(identity.userId)) {
         throw new Error(Messages.Invalid_UserId);
     }
+    if (!identity.userId && !identity.anonymousId) {
+        throw new Error(Messages.Invalid_UserId);
+    }
+};
 
-    const cart = await Cart.findOne({ userId }).populate(BOOK_POPULATE).lean();
+const buildEmptyCartResult = (identity: CartIdentity) => ({
+    ...identity,
+    items: [],
+    summary: computeCartTotals(null),
+});
+
+// ---- Public services ----
+
+export const getCartByIdentityService = async (identity: CartIdentity) => {
+    validateIdentity(identity);
+
+    const filter = identityToFilter(identity);
+    const cart = await Cart.findOne(filter).populate(BOOK_POPULATE).lean();
 
     if (!cart) {
-        return {
-            userId,
-            items: [],
-            summary: computeCartTotals(null),
-        };
+        return buildEmptyCartResult(identity);
     }
 
     return {
@@ -74,26 +101,30 @@ export const getCartByUserIdService = async (userId: string) => {
     };
 };
 
+// Kept for backward compatibility (used by tests, etc.)
+export const getCartByUserIdService = async (userId: string) => {
+    return getCartByIdentityService({ userId });
+};
+
 export const addItemToCartService = async (
-    userId: string,
+    identity: CartIdentity,
     bookId: string,
     quantity = 1,
     pricingMode: "rent" | "sale" = "rent",
     rentalPeriod?: "day" | "week" | "month"
 ) => {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error(Messages.Invalid_UserId);
+    validateIdentity(identity);
 
     if (!mongoose.Types.ObjectId.isValid(bookId)) throw new Error(Messages.Invalid_BookId);
 
     const bookExists = await Book.findById(bookId).select("_id");
-
     if (!bookExists) throw new Error(Messages.Book_Not_Found);
 
-    let cart = await Cart.findOne({ userId });
+    const filter = identityToFilter(identity);
+    let cart = await Cart.findOne(filter);
 
     if (!cart) {
-        cart = await Cart.create({
-            userId,
+        const createPayload: any = {
             items: [
                 {
                     bookId: new mongoose.Types.ObjectId(bookId),
@@ -103,8 +134,11 @@ export const addItemToCartService = async (
                     addedAt: new Date(),
                 },
             ],
-        });
+        };
+        if (identity.userId) createPayload.userId = identity.userId;
+        if (identity.anonymousId) createPayload.anonymousId = identity.anonymousId;
 
+        cart = await Cart.create(createPayload);
         return await getPopulatedCartWithSummary(cart._id);
     }
 
@@ -128,20 +162,17 @@ export const addItemToCartService = async (
     }
 
     await cart.save();
-
     return await getPopulatedCartWithSummary(cart._id);
 };
 
 export const updateCartItemQuantityService = async (
-    userId: string,
+    identity: CartIdentity,
     bookId: string,
     quantity: number,
     pricingMode: "rent" | "sale",
     rentalPeriod?: "day" | "week" | "month"
 ) => {
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-        throw new Error(Messages.Invalid_UserId);
-    }
+    validateIdentity(identity);
 
     if (!mongoose.Types.ObjectId.isValid(bookId)) {
         throw new Error(Messages.Invalid_BookId);
@@ -151,7 +182,8 @@ export const updateCartItemQuantityService = async (
         throw new Error(Messages.Quantity_Must_Be_At_Least_One);
     }
 
-    const cart = await Cart.findOne({ userId });
+    const filter = identityToFilter(identity);
+    const cart = await Cart.findOne(filter);
 
     if (!cart) {
         throw new Error(Messages.Cart_Not_Found);
@@ -171,25 +203,23 @@ export const updateCartItemQuantityService = async (
     existingItem.quantity = quantity;
 
     await cart.save();
-
     return await getPopulatedCartWithSummary(cart._id);
 };
 
 export const removeItemFromCartService = async (
-    userId: string,
+    identity: CartIdentity,
     bookId: string,
     pricingMode: "rent" | "sale",
     rentalPeriod?: "day" | "week" | "month"
 ) => {
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-        throw new Error(Messages.Invalid_UserId);
-    }
+    validateIdentity(identity);
 
     if (!mongoose.Types.ObjectId.isValid(bookId)) {
         throw new Error(Messages.Invalid_BookId);
     }
 
-    const cart = await Cart.findOne({ userId });
+    const filter = identityToFilter(identity);
+    const cart = await Cart.findOne(filter);
 
     if (!cart) {
         throw new Error(Messages.Cart_Not_Found);
@@ -211,36 +241,30 @@ export const removeItemFromCartService = async (
     }
 
     await cart.save();
-
     return await getPopulatedCartWithSummary(cart._id);
 };
 
-export const clearCartService = async (userId: string) => {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error(Messages.Invalid_UserId);
+export const clearCartService = async (identity: CartIdentity) => {
+    validateIdentity(identity);
 
-    const cart = await Cart.findOne({ userId });
+    const filter = identityToFilter(identity);
+    const cart = await Cart.findOne(filter);
 
     if (!cart) {
-        return {
-            userId,
-            items: [],
-            summary: computeCartTotals(null),
-        };
+        return buildEmptyCartResult(identity);
     }
 
     cart.items = [];
-
     await cart.save();
 
     return await getPopulatedCartWithSummary(cart._id);
 };
 
-export const validateCartService = async (userId: string) => {
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-        throw new Error(Messages.Invalid_UserId);
-    }
+export const validateCartService = async (identity: CartIdentity) => {
+    validateIdentity(identity);
 
-    const cart = await Cart.findOne({ userId })
+    const filter = identityToFilter(identity);
+    const cart = await Cart.findOne(filter)
         .populate({
             path: "items.bookId",
             select: "quantity isActive isAvailable",
@@ -249,7 +273,7 @@ export const validateCartService = async (userId: string) => {
 
     if (!cart || !cart.items?.length) {
         return {
-            userId,
+            ...identity,
             isValid: true,
             invalidItems: [],
             validationSummary: {
@@ -305,7 +329,7 @@ export const validateCartService = async (userId: string) => {
     const invalidItemsUnique = Array.from(deduped.values());
 
     return {
-        userId,
+        ...identity,
         isValid: invalidItemsUnique.length === 0,
         invalidItems: invalidItemsUnique,
         validationSummary: {
@@ -313,4 +337,63 @@ export const validateCartService = async (userId: string) => {
             invalidCount: invalidItemsUnique.length,
         },
     };
+};
+
+// ---- Merge guest cart into user cart (called after login/signup) ----
+
+export const mergeGuestCartIntoUserCartService = async (userId: string, anonymousId: string) => {
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+        throw new Error(Messages.Invalid_UserId);
+    }
+    if (!anonymousId) {
+        // No guest cart to merge; just return user cart
+        return await getCartByIdentityService({ userId });
+    }
+
+    const guestCart = await Cart.findOne({ anonymousId }).lean();
+    if (!guestCart || !guestCart.items?.length) {
+        // Guest cart is empty; return user cart as-is
+        return await getCartByIdentityService({ userId });
+    }
+
+    // Find or create user cart
+    let userCart = await Cart.findOne({ userId });
+
+    if (!userCart) {
+        // Transfer guest cart directly to user
+        await Cart.updateOne(
+            { _id: guestCart._id },
+            { $set: { userId: new mongoose.Types.ObjectId(userId), anonymousId: undefined } }
+        );
+        return await getPopulatedCartWithSummary(guestCart._id);
+    }
+
+    // Merge guest items into user cart
+    for (const guestItem of guestCart.items) {
+        const existingItem = userCart.items.find(
+            (item) =>
+                item.bookId.toString() === guestItem.bookId.toString() &&
+                item.pricingMode === guestItem.pricingMode &&
+                item.rentalPeriod === guestItem.rentalPeriod
+        );
+
+        if (existingItem) {
+            existingItem.quantity += guestItem.quantity;
+        } else {
+            userCart.items.push({
+                bookId: guestItem.bookId,
+                quantity: guestItem.quantity,
+                pricingMode: guestItem.pricingMode,
+                rentalPeriod: guestItem.rentalPeriod,
+                addedAt: guestItem.addedAt || new Date(),
+            });
+        }
+    }
+
+    await userCart.save();
+
+    // Delete guest cart after merge
+    await Cart.deleteOne({ _id: guestCart._id });
+
+    return await getPopulatedCartWithSummary(userCart._id);
 };

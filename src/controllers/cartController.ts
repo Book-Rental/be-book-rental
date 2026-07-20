@@ -2,31 +2,40 @@ import { Request, Response } from "express";
 import {
     addItemToCartService,
     clearCartService,
-    getCartByUserIdService,
+    getCartByIdentityService,
     removeItemFromCartService,
     updateCartItemQuantityService,
     validateCartService,
 } from "../services/cartService";
+import { CartIdentity } from "../middlewares/resolveCartIdentity";
 import { failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
 import { Messages } from "../utils/constants";
 
-interface AuthenticatedRequest extends Request {
-    user?: any;
-}
-
-const getAuthenticatedUserId = (req: AuthenticatedRequest): string | null => {
-    const user = req.user;
-    return user?.id || user?._id || user?.userId || null;
+const getCartIdentity = (req: Request): CartIdentity | null => {
+    return req.cartIdentity ?? null;
 };
 
-export const getCart = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-        const userId = getAuthenticatedUserId(req);
-        if (!userId) return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+const getUserId = (req: Request): string | null => {
+    return req.cartIdentity?.userId ?? null;
+};
 
-        const cart = await getCartByUserIdService(userId);
-        const cartData = cart ?? { userId, items: [] };
+const getAnonymousId = (req: Request): string | null => {
+    return req.cartIdentity?.anonymousId ?? null;
+};
+
+export const getCart = async (req: Request, res: Response) => {
+    try {
+        const identity = getCartIdentity(req);
+        if (!identity)
+            return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+
+        const cart = await getCartByIdentityService(identity);
+        const cartData = cart ?? {
+            ...identity,
+            items: [],
+            summary: undefined,
+        };
 
         return successResponse(res, cartData, Messages.Cart_Fetched, StatusCode.OK);
     } catch (err: any) {
@@ -38,10 +47,11 @@ export const getCart = async (req: AuthenticatedRequest, res: Response) => {
     }
 };
 
-export const addItemToCart = async (req: AuthenticatedRequest, res: Response) => {
+export const addItemToCart = async (req: Request, res: Response) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        if (!userId) return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+        const identity = getCartIdentity(req);
+        if (!identity)
+            return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
 
         const { bookId, quantity, pricingMode, rentalPeriod } = req.body;
         if (!bookId) return failResponse(res, Messages.BookId_Required, StatusCode.Bad_Request);
@@ -51,7 +61,7 @@ export const addItemToCart = async (req: AuthenticatedRequest, res: Response) =>
             return failResponse(res, Messages.Quantity_Minimum_One, StatusCode.Bad_Request);
 
         const updatedCart = await addItemToCartService(
-            userId,
+            identity,
             bookId,
             qty,
             pricingMode,
@@ -67,17 +77,18 @@ export const addItemToCart = async (req: AuthenticatedRequest, res: Response) =>
     }
 };
 
-export const removeItemFromCart = async (req: AuthenticatedRequest, res: Response) => {
+export const removeItemFromCart = async (req: Request, res: Response) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        if (!userId) return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+        const identity = getCartIdentity(req);
+        if (!identity)
+            return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
 
         const bookId = req.params.bookId as string;
         const { pricingMode, rentalPeriod } = req.body;
         if (!bookId) return failResponse(res, Messages.BookId_Required, StatusCode.Bad_Request);
 
         const updatedCart = await removeItemFromCartService(
-            userId,
+            identity,
             bookId,
             pricingMode,
             rentalPeriod
@@ -92,10 +103,11 @@ export const removeItemFromCart = async (req: AuthenticatedRequest, res: Respons
     }
 };
 
-export const patchCartItemQuantity = async (req: AuthenticatedRequest, res: Response) => {
+export const patchCartItemQuantity = async (req: Request, res: Response) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        if (!userId) return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+        const identity = getCartIdentity(req);
+        if (!identity)
+            return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
 
         const bookId = req.params.bookId as string;
         if (!bookId) return failResponse(res, Messages.BookId_Required, StatusCode.Bad_Request);
@@ -108,7 +120,7 @@ export const patchCartItemQuantity = async (req: AuthenticatedRequest, res: Resp
 
         if (qty === 0) {
             const updatedCart = await removeItemFromCartService(
-                userId,
+                identity,
                 bookId,
                 pricingMode,
                 rentalPeriod
@@ -117,7 +129,7 @@ export const patchCartItemQuantity = async (req: AuthenticatedRequest, res: Resp
         }
 
         const updatedCart = await updateCartItemQuantityService(
-            userId,
+            identity,
             bookId,
             qty,
             pricingMode,
@@ -133,12 +145,13 @@ export const patchCartItemQuantity = async (req: AuthenticatedRequest, res: Resp
     }
 };
 
-export const clearCart = async (req: AuthenticatedRequest, res: Response) => {
+export const clearCart = async (req: Request, res: Response) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        if (!userId) return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+        const identity = getCartIdentity(req);
+        if (!identity)
+            return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
 
-        const cleared = await clearCartService(userId);
+        const cleared = await clearCartService(identity);
         return successResponse(res, cleared, Messages.Cart_Cleared, StatusCode.OK);
     } catch (err: any) {
         return failResponse(
@@ -149,14 +162,14 @@ export const clearCart = async (req: AuthenticatedRequest, res: Response) => {
     }
 };
 
-export const validateCart = async (req: AuthenticatedRequest, res: Response) => {
+export const validateCart = async (req: Request, res: Response) => {
     try {
-        const userId = getAuthenticatedUserId(req);
-        if (!userId) {
+        const identity = getCartIdentity(req);
+        if (!identity) {
             return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
         }
 
-        const validation = await validateCartService(userId);
+        const validation = await validateCartService(identity);
         return successResponse(res, validation, Messages.Cart_Valid, StatusCode.OK);
     } catch (err: any) {
         return failResponse(
