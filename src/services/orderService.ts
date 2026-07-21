@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Book from "../models/Book";
 import Order, { OrderStatus, OrderType, PaymentStatus } from "../models/Order";
 import { IOrder } from "../models/orderInteface";
@@ -385,6 +386,116 @@ export const deleteOrderByIdService = async (orderId: string) => {
     try {
         const result = await Order.findByIdAndDelete(orderId);
         return result !== null;
+    } catch (error) {
+        throw error;
+    }
+};
+
+export const getSellerDashboardService = async (sellerUserId: string) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(sellerUserId)) {
+            throw new Error("Invalid seller user ID");
+        }
+
+        const sellerObjectId = new mongoose.Types.ObjectId(sellerUserId);
+
+        // ── Aggregation for order-related stats ──
+        const orderStats = await Order.aggregate([
+            // Match orders containing at least one item from this seller
+            { $match: { "items.sellerId": sellerObjectId } },
+
+            // Unwind items to work with individual items
+            { $unwind: "$items" },
+
+            // Filter only items belonging to this seller
+            { $match: { "items.sellerId": sellerObjectId } },
+
+            // Group to compute stats
+            {
+                $group: {
+                    _id: null,
+                    totalOrders: { $addToSet: "$_id" },
+                    activeItems: {
+                        $sum: {
+                            $cond: [
+                                { $in: ["$items.itemStatus", ["pending", "confirmed", "shipped"]] },
+                                1,
+                                0,
+                            ],
+                        },
+                    },
+                    completedItems: {
+                        $sum: {
+                            $cond: [{ $eq: ["$items.itemStatus", "delivered"] }, 1, 0],
+                        },
+                    },
+                    returnedItems: {
+                        $sum: {
+                            $cond: [{ $eq: ["$items.itemStatus", "returned"] }, 1, 0],
+                        },
+                    },
+                    cancelledItems: {
+                        $sum: {
+                            $cond: [{ $eq: ["$items.itemStatus", "cancelled"] }, 1, 0],
+                        },
+                    },
+                    // For earnings: sum subtotal from orders where this seller has delivered items
+                    // Note: subtotal is at order level; we approximate seller earnings
+                    // by proportionally splitting order subtotal across items
+                    totalEarnings: {
+                        $sum: {
+                            $cond: [
+                                { $eq: ["$items.itemStatus", "delivered"] },
+                                {
+                                    $multiply: [
+                                        { $divide: ["$subtotal", { $size: "$items" }] },
+                                        "$items.quantity",
+                                    ],
+                                },
+                                0,
+                            ],
+                        },
+                    },
+                },
+            },
+
+            // Project final shape
+            {
+                $project: {
+                    _id: 0,
+                    totalOrders: { $size: "$totalOrders" },
+                    activeOrdersCount: "$activeItems",
+                    completedOrdersCount: "$completedItems",
+                    returnedOrdersCount: "$returnedItems",
+                    cancelledOrdersCount: "$cancelledItems",
+                    totalEarnings: { $round: ["$totalEarnings", 2] },
+                },
+            },
+        ]);
+
+        // ── Book-related stats ──
+        const totalBooks = await Book.countDocuments({ sellerId: sellerObjectId });
+        const availableBooksCount = await Book.countDocuments({
+            sellerId: sellerObjectId,
+            isAvailable: true,
+            quantity: { $gt: 0 },
+        });
+
+        // Default stats if no orders exist
+        const stats = orderStats[0] || {
+            totalOrders: 0,
+            activeOrdersCount: 0,
+            completedOrdersCount: 0,
+            returnedOrdersCount: 0,
+            cancelledOrdersCount: 0,
+            totalEarnings: 0,
+        };
+
+        return {
+            ...stats,
+            totalBooks,
+            availableBooksCount,
+        };
     } catch (error) {
         throw error;
     }

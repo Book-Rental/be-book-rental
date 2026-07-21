@@ -6,6 +6,7 @@ import {
     getOrderBookDetailsService,
     getOrderByOrderIdService,
     getOrderByUserIdService,
+    getSellerDashboardService,
     getSellerOrdersService,
 } from "../services/orderService";
 import { Messages } from "../utils/constants";
@@ -216,6 +217,33 @@ export const getOrderBookDetails = async (req: Request, res: Response): Promise<
         failResponse(
             res,
             error.message || "Internal Server Error",
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+// Seller dashboard: returns aggregate statistics for the authenticated seller.
+export const getSellerDashboard = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const authUser: any = (req as any).user;
+        const sellerUserId: string | undefined = authUser?.id || authUser?._id || authUser?.userId;
+
+        if (!sellerUserId) {
+            failResponse(res, "Unauthorized", StatusCode.Unauthorized);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(sellerUserId)) {
+            failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const dashboard = await getSellerDashboardService(sellerUserId);
+        successResponse(res, dashboard, Messages.Seller_Dashboard_Fetched, StatusCode.OK);
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
             StatusCode.Internal_Server_Error
         );
     }

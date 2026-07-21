@@ -6,6 +6,7 @@ import {
     getOrderBookDetails,
     getOrderById,
     getOrderByUserId,
+    getSellerDashboard,
     getSellerOrders,
 } from "../controllers/orderController";
 import { auth } from "../middlewares/authMiddleware";
@@ -18,6 +19,7 @@ route.get("/getByUserId/:userId", getOrderByUserId);
 route.get("/:orderId/book/:bookId", getOrderBookDetails);
 route.post("/craete", createOrder);
 route.delete("/:orderId", deleteOrderById);
+route.get("/seller/dashboard", auth as any, getSellerDashboard);
 route.get("/seller/orders", auth as any, getSellerOrders);
 
 export default route;
