@@ -10,6 +10,11 @@ import { validationResult } from "express-validator";
 import { generateToken, verifyGuestToken } from "../utils/jwt";
 import { comparePasswords } from "../utils/passwordValidation";
 import { mergeGuestCartIntoUserCartService } from "../services/cartService";
+import { generateOtp, saveOtp, verifyOtp } from "../services/otp.service";
+import { sendEmail } from "../services/email.service";
+import { otpEmailTemplate } from "../templates/otpEmail";
+import Otp from "../models/Otp";
+
 const isProd = process.env.NODE_ENV === "production";
 
 // POST login user
@@ -119,6 +124,18 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
 export const signupUser = async (req: Request, res: Response): Promise<void> => {
     try {
         const userData = req.body;
+        const otpRecord = await Otp.findOne({
+            email: userData.email,
+        });
+
+        if (!otpRecord || !otpRecord.verified) {
+            failResponse(
+                res,
+                "Please verify your email first",
+                StatusCode.Bad_Request
+            );
+            return;
+        }
         const newUser: IUser | any = await createUserService({
             ...userData,
             createdBy: null,
@@ -134,6 +151,9 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
             return;
         }
 
+        await Otp.deleteOne({
+            email: userData.email,
+        });
         // Merge guest cart into newly created user cart (if guest cookie exists)
         const guestToken = req.cookies?.[GUEST_COOKIE_NAME];
         if (guestToken) {
@@ -168,5 +188,89 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
     } catch (err: any) {
         console.error("Signup error:", err);
         failResponse(res, err?.message || Messages.Something_went_Wrong, StatusCode.Bad_Request);
+    }
+};
+
+export const sendOtp = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    try {
+        const { email, name } = req.body;
+        if (!email) {
+            failResponse(res, "Email is required", StatusCode.Bad_Request);
+            return;
+        }
+        const existingUser = await loginService(email);
+        if (existingUser) {
+            failResponse(res, "User already exists", StatusCode.Bad_Request);
+            return;
+        }
+
+        const otp = generateOtp();
+        await saveOtp(email, otp);
+
+        const html = otpEmailTemplate(name ?? "User", otp);
+        await sendEmail(
+            [
+                {
+                    Email: email,
+                    Name: name || "User",
+                },
+            ],
+            "Email Verification",
+            html
+        );
+        successResponse(
+            res,
+            null,
+            "OTP sent successfully",
+            StatusCode.OK
+        );
+    } catch (error: any) {
+        console.error(error);
+        failResponse(
+            res,
+            error.message || "Failed to send OTP",
+            StatusCode.Bad_Request
+        );
+    }
+};
+
+export const verifyUserOtp = async (
+    req: Request,
+    res: Response
+): Promise<void> => {
+    try {
+        const { email, otp } = req.body;
+        if (!email || !otp) {
+            failResponse(
+                res,
+                "Email and OTP are required",
+                StatusCode.Bad_Request
+            );
+            return;
+        }
+        const isVerified = await verifyOtp(email, otp);
+        if (!isVerified) {
+            failResponse(
+                res,
+                "Invalid or Expired OTP",
+                StatusCode.Bad_Request
+            );
+            return;
+        }
+        successResponse(
+            res,
+            null,
+            "OTP verified successfully",
+            StatusCode.OK
+        );
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message,
+            StatusCode.Bad_Request
+        );
     }
 };
