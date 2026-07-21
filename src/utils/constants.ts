@@ -144,6 +144,7 @@ export const Messages = {
         "Estimated delivery date should be greater than the current estimated delivery date.",
     Order_Fetch_success: "Order fetched successfully",
     OrderID_Is_Invalid: "OrderId is Invalid ",
+    Seller_Dashboard_Fetched: "Seller dashboard fetched successfully",
     // =========================
     // Address
     // =========================
