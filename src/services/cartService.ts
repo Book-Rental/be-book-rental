@@ -339,6 +339,82 @@ export const validateCartService = async (identity: CartIdentity) => {
     };
 };
 
+export const updateCartItemRentalPeriodService = async (
+    identity: CartIdentity,
+    bookId: string,
+    pricingMode: "rent" | "sale",
+    currentRentalPeriod: "day" | "week" | "month",
+    newRentalPeriod: "day" | "week" | "month"
+) => {
+    validateIdentity(identity);
+
+    if (!mongoose.Types.ObjectId.isValid(bookId)) {
+        throw new Error(Messages.Invalid_BookId);
+    }
+
+    if (pricingMode !== "rent") {
+        throw new Error(Messages.PricingMode_Rent_Required);
+    }
+
+    const validPeriods = ["day", "week", "month"];
+    if (!validPeriods.includes(currentRentalPeriod)) {
+        throw new Error(Messages.Invalid_RentalPeriod);
+    }
+    if (!validPeriods.includes(newRentalPeriod)) {
+        throw new Error(Messages.Invalid_RentalPeriod);
+    }
+
+    // No-op if current and new are the same
+    if (currentRentalPeriod === newRentalPeriod) {
+        const filter = identityToFilter(identity);
+        const cart = await Cart.findOne(filter);
+        if (!cart) throw new Error(Messages.Cart_Not_Found);
+        return await getPopulatedCartWithSummary(cart._id);
+    }
+
+    const filter = identityToFilter(identity);
+    const cart = await Cart.findOne(filter);
+
+    if (!cart) {
+        throw new Error(Messages.Cart_Not_Found);
+    }
+
+    // Find the item with current rental period
+    const itemIndex = cart.items.findIndex(
+        (item) =>
+            item.bookId.toString() === bookId &&
+            item.pricingMode === pricingMode &&
+            item.rentalPeriod === currentRentalPeriod
+    );
+
+    if (itemIndex === -1) {
+        throw new Error(Messages.Cart_Item_Not_Found);
+    }
+
+    const existingItem = cart.items[itemIndex];
+
+    // Check if an item with the new rental period already exists
+    const existingItemWithNewPeriod = cart.items.find(
+        (item) =>
+            item.bookId.toString() === bookId &&
+            item.pricingMode === pricingMode &&
+            item.rentalPeriod === newRentalPeriod
+    );
+
+    if (existingItemWithNewPeriod) {
+        // Merge quantities: add old quantity to the existing item with new period
+        existingItemWithNewPeriod.quantity += existingItem.quantity;
+        // Remove the old item
+        cart.items.splice(itemIndex, 1);
+    } else {
+        // Simply update the rental period on the existing item
+        existingItem.rentalPeriod = newRentalPeriod;
+    }
+
+    await cart.save();
+    return await getPopulatedCartWithSummary(cart._id);
+};
+
 // ---- Merge guest cart into user cart (called after login/signup) ----
 
 export const mergeGuestCartIntoUserCartService = async (userId: string, anonymousId: string) => {
