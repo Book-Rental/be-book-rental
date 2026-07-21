@@ -111,6 +111,8 @@ export const Messages = {
 
     Cart_Not_Found: "Cart not found",
     Cart_Item_Not_Found: "Cart item not found",
+    Cart_Item_RentalPeriod_Updated: "Cart item rental period updated",
+    Cart_Update_RentalPeriod_Failed: "Failed to update cart item rental period",
 
     BookId_Required: "bookId is required",
     Invalid_UserId: "Invalid userId",
@@ -119,6 +121,9 @@ export const Messages = {
     Quantity_Invalid: "Quantity must be a valid number >= 0",
     Quantity_Minimum_One: "Quantity must be >= 1",
     Insufficient_Quantity: "Insufficient inventory for reserved cart quantity",
+    RentalPeriod_Required: "Rental period is required",
+    Invalid_RentalPeriod: "Invalid rental period. Must be 'day', 'week', or 'month'",
+    PricingMode_Rent_Required: "pricingMode must be 'rent' to change rental period",
 
     // =========================
     // Orders

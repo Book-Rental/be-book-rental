@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { Request, Response, NextFunction } from "express";
 import { verifyToken, verifyGuestToken, signGuestToken } from "../utils/jwt";
-import { JWT_TOKEN_NAME } from "../utils/constants";
+import { GUEST_COOKIE_NAME, JWT_TOKEN_NAME } from "../utils/constants";
 
 /**
  * Resolves cart identity for a request.
@@ -25,7 +25,6 @@ declare module "express" {
     }
 }
 
-const GUEST_COOKIE_NAME = "guest";
 const GUEST_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 const isProd = process.env.NODE_ENV === "production";
 

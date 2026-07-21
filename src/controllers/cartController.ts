@@ -5,6 +5,7 @@ import {
     getCartByIdentityService,
     removeItemFromCartService,
     updateCartItemQuantityService,
+    updateCartItemRentalPeriodService,
     validateCartService,
 } from "../services/cartService";
 import { CartIdentity } from "../middlewares/resolveCartIdentity";
@@ -157,6 +158,48 @@ export const clearCart = async (req: Request, res: Response) => {
         return failResponse(
             res,
             err?.message || Messages.Cart_Clear_Failed,
+            StatusCode.Bad_Request
+        );
+    }
+};
+
+export const patchCartItemRentalPeriod = async (req: Request, res: Response) => {
+    try {
+        const identity = getCartIdentity(req);
+        if (!identity)
+            return failResponse(res, Messages.Unauthorized_User, StatusCode.Unauthorized);
+
+        const bookId = req.params.bookId as string;
+        if (!bookId) return failResponse(res, Messages.BookId_Required, StatusCode.Bad_Request);
+
+        const { pricingMode, currentRentalPeriod, newRentalPeriod } = req.body;
+
+        if (!pricingMode)
+            return failResponse(res, Messages.PricingMode_Rent_Required, StatusCode.Bad_Request);
+        if (!currentRentalPeriod || !newRentalPeriod)
+            return failResponse(res, Messages.RentalPeriod_Required, StatusCode.Bad_Request);
+
+        const validPeriods = ["day", "week", "month"];
+        if (!validPeriods.includes(currentRentalPeriod) || !validPeriods.includes(newRentalPeriod))
+            return failResponse(res, Messages.Invalid_RentalPeriod, StatusCode.Bad_Request);
+
+        const updatedCart = await updateCartItemRentalPeriodService(
+            identity,
+            bookId,
+            pricingMode,
+            currentRentalPeriod,
+            newRentalPeriod
+        );
+        return successResponse(
+            res,
+            updatedCart,
+            Messages.Cart_Item_RentalPeriod_Updated,
+            StatusCode.OK
+        );
+    } catch (err: any) {
+        return failResponse(
+            res,
+            err?.message || Messages.Cart_Update_RentalPeriod_Failed,
             StatusCode.Bad_Request
         );
     }
