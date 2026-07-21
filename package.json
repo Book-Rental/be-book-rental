@@ -9,7 +9,7 @@
     "test": "vitest --config vitest.config.ts --run",
     "test:watch": "vitest --config vitest.config.ts",
     "test:coverage": "vitest --config vitest.config.ts --run --coverage",
-     "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\""
   },
   "author": "",
   "license": "ISC",
@@ -26,6 +26,7 @@
     "mongoose": "^8.13.2",
     "morgan": "^1.10.0",
     "multer": "^2.2.0",
+    "node-mailjet": "^6.0.11",
     "nodemon": "^3.1.14"
   },
   "devDependencies": {
