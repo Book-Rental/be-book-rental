@@ -37,7 +37,7 @@ const locationSchema = new Schema(
 /**
  * Address Schema
  */
-const addressSchema = new Schema(
+export const addressSchema = new Schema(
     {
         name: {
             type: String,
