@@ -13,7 +13,6 @@ import { Messages } from "../utils/constants";
 import { failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
 import { Request, Response } from "express";
-import { OrderType } from "../models/Order";
 
 //get all orders
 export const getAllOrders = async (req: Request, res: Response): Promise<void> => {
@@ -45,22 +44,10 @@ export const getOrderById = async (req: Request, res: Response): Promise<void> =
 //create Order
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
     try {
-        const orderData = req.body;
-
-        const {
-            userId,
-            items,
-            deliveryAddress,
-            paymentMethod,
-            subtotal,
-            securityDepositTotal,
-            deliveryFee,
-            tax,
-            discount,
-            total,
-        } = orderData;
+        const { userId, items, shippingAddress, billingAddress, payment, amount } = req.body;
 
         // ================= User Validation =================
+
         if (!userId) {
             failResponse(res, "User Id is required.", StatusCode.Bad_Request);
             return;
@@ -72,6 +59,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
         }
 
         // ================= Items Validation =================
+
         if (!Array.isArray(items) || items.length === 0) {
             failResponse(res, "At least one book is required.", StatusCode.Bad_Request);
             return;
@@ -88,50 +76,79 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
                 return;
             }
 
-            if (!["buy", "rent"].includes(item.orderType)) {
-                failResponse(res, "Invalid Order Type.", StatusCode.Bad_Request);
-                return;
-            }
-
             if (!item.quantity || item.quantity <= 0) {
                 failResponse(res, "Quantity should be greater than zero.", StatusCode.Bad_Request);
                 return;
             }
 
-            // if (item.orderType === "rent") {
-            //     if (!item.rentalDuration) {
-            //         failResponse(res, "Rental Duration is required.", StatusCode.Bad_Request);
-            //         return;
-            //     }
+            if (!item.rentalType) {
+                failResponse(res, "Rental Type is required.", StatusCode.Bad_Request);
+                return;
+            }
 
-            //     if (!item.rentStartDate || !item.expectedReturnDate) {
-            //         failResponse(res, "Rent dates are required.", StatusCode.Bad_Request);
-            //         return;
-            //     }
-            // }
+            if (!["day", "week", "month"].includes(item.rentalType)) {
+                failResponse(
+                    res,
+                    "Rental Type should be day, week or month.",
+                    StatusCode.Bad_Request
+                );
+                return;
+            }
         }
 
-        // ================= Address Validation =================
-        if (!deliveryAddress) {
-            failResponse(res, "Delivery address is required.", StatusCode.Bad_Request);
+        // ================= Shipping Address =================
+
+        if (!shippingAddress) {
+            failResponse(res, "Shipping Address is required.", StatusCode.Bad_Request);
+            return;
+        }
+
+        // ================= Billing Address =================
+
+        if (!billingAddress) {
+            failResponse(res, "Billing Address is required.", StatusCode.Bad_Request);
             return;
         }
 
         // ================= Payment Validation =================
+
+        if (!payment) {
+            failResponse(res, "Payment details are required.", StatusCode.Bad_Request);
+            return;
+        }
+
         const paymentMethods = ["COD", "UPI", "CARD", "NET_BANKING"];
 
-        if (!paymentMethods.includes(paymentMethod)) {
+        if (!payment.paymentMethod) {
+            failResponse(res, "Payment Method is required.", StatusCode.Bad_Request);
+            return;
+        }
+
+        if (!paymentMethods.includes(payment.paymentMethod)) {
             failResponse(res, "Invalid Payment Method.", StatusCode.Bad_Request);
             return;
         }
 
-        // ================= Amount Validation =================
-        if (subtotal < 0 || total <= 0) {
-            failResponse(res, "Invalid order amount.", StatusCode.Bad_Request);
+        if (!payment.transactionId) {
+            failResponse(res, "Transaction Id is required.", StatusCode.Bad_Request);
             return;
         }
 
-        const order = await createOrderService(orderData);
+        // ================= Amount Validation =================
+
+        if (!amount) {
+            failResponse(res, "Amount details are required.", StatusCode.Bad_Request);
+            return;
+        }
+
+        if (amount.totalAmount <= 0) {
+            failResponse(res, "Invalid Total Amount.", StatusCode.Bad_Request);
+            return;
+        }
+
+        // ================= Create Order =================
+
+        const order = await createOrderService(req.body);
 
         successResponse(res, order, Messages.OrderCreated, StatusCode.Created);
     } catch (error: any) {

@@ -1,19 +1,185 @@
-import { Schema, model, Types } from "mongoose";
+import { model, Schema, Types } from "mongoose";
 
-export enum OrderType {
-    BUY = "buy",
-    RENT = "rent",
-}
+export const AddressSchema = new Schema(
+    {
+        name: {
+            type: String,
+            required: true,
+            trim: true,
+        },
 
-export enum OrderStatus {
+        phone: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        type: {
+            type: String,
+            enum: ["home", "work", "other"],
+            default: "home",
+        },
+
+        addressLine1: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        addressLine2: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+
+        landmark: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+
+        city: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        state: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        pincode: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        country: {
+            type: String,
+            required: true,
+            default: "India",
+            trim: true,
+        },
+    },
+    {
+        _id: false,
+    }
+);
+
+export const RentalSchema = new Schema(
+    {
+        rentalPrice: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        securityDeposit: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        rentalDuration: {
+            type: Number,
+            required: true, // Number of days
+            min: 1,
+        },
+
+        rentStartDate: {
+            type: Date,
+            required: true,
+        },
+
+        expectedReturnDate: {
+            type: Date,
+            required: true,
+        },
+
+        actualReturnDate: {
+            type: Date,
+            default: null,
+        },
+
+        extensionCount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
+        maximumExtensions: {
+            type: Number,
+            default: 2,
+            min: 0,
+        },
+
+        extendedUntil: {
+            type: Date,
+            default: null,
+        },
+
+        lateFee: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+    },
+    {
+        _id: false,
+    }
+);
+
+export enum DepositStatus {
     PENDING = "pending",
-    CONFIRMED = "confirmed",
-    SHIPPED = "shipped",
-    DELIVERED = "delivered",
-    RETURN_REQUESTED = "return_requested",
-    RETURNED = "returned",
-    CANCELLED = "cancelled",
+    HOLD = "hold",
+    REFUNDED = "refunded",
+    PARTIALLY_REFUNDED = "partially_refunded",
+    DEDUCTED = "deducted",
 }
+
+export const DepositSchema = new Schema(
+    {
+        amount: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        status: {
+            type: String,
+            enum: Object.values(DepositStatus),
+            default: DepositStatus.PENDING,
+        },
+
+        refundedAmount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
+        deductionAmount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
+        deductionReason: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+
+        refundedDate: {
+            type: Date,
+            default: null,
+        },
+    },
+    {
+        _id: false,
+    }
+);
 
 export enum PaymentStatus {
     PENDING = "pending",
@@ -29,47 +195,29 @@ export enum PaymentMethod {
     NET_BANKING = "NET_BANKING",
 }
 
-const AddressSnapshotSchema = new Schema(
+export const PaymentSchema = new Schema(
     {
-        name: {
+        paymentMethod: {
             type: String,
+            enum: Object.values(PaymentMethod),
+            required: true,
+        },
+
+        paymentStatus: {
+            type: String,
+            enum: Object.values(PaymentStatus),
+            default: PaymentStatus.PENDING,
+        },
+
+        transactionId: {
+            type: String,
+            required: true,
             trim: true,
         },
 
-        type: {
-            type: String,
-            enum: ["home", "work", "other"],
-            default: "home",
-        },
-
-        street: {
-            type: String,
-            required: true,
-        },
-
-        city: {
-            type: String,
-            required: true,
-        },
-
-        state: {
-            type: String,
-            required: true,
-        },
-
-        zipCode: {
-            type: String,
-            required: true,
-        },
-
-        country: {
-            type: String,
-            required: true,
-        },
-
-        phone: {
-            type: String,
-            required: true,
+        paidAt: {
+            type: Date,
+            default: null,
         },
     },
     {
@@ -77,46 +225,115 @@ const AddressSnapshotSchema = new Schema(
     }
 );
 
-const OrderItemSchema = new Schema({
-    bookId: {
-        type: Schema.Types.ObjectId,
-        ref: "Book",
-        required: true,
-    },
+export const AmountSchema = new Schema(
+    {
+        rentalAmount: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
 
-    sellerId: {
-        type: Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-    },
+        securityDeposit: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
 
-    orderType: {
-        type: String,
-        enum: Object.values(OrderType),
-        required: true,
-    },
+        deliveryFee: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
 
-    quantity: {
-        type: Number,
-        default: 1,
-    },
-    rentalPrice: Number,
-    securityDeposit: Number,
+        discount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
 
-    itemStatus: {
-        type: String,
-        enum: Object.values(OrderStatus),
-        default: OrderStatus.PENDING,
-    },
+        tax: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
 
-    rentStartDate: Date,
-    expectedReturnDate: Date,
-    actualReturnDate: Date,
-    lateFee: {
-        type: Number,
-        default: 0,
+        totalAmount: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        refundAmount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
     },
-});
+    {
+        _id: false,
+    }
+);
+
+export enum ItemStatus {
+    PENDING = "pending",
+    CONFIRMED = "confirmed",
+    SHIPPED = "shipped",
+    DELIVERED = "delivered",
+    RETURN_REQUESTED = "return_requested",
+    RETURNED = "returned",
+    CANCELLED = "cancelled",
+}
+
+export const OrderItemSchema = new Schema(
+    {
+        bookId: {
+            type: Types.ObjectId,
+            ref: "Book",
+            required: true,
+        },
+
+        sellerId: {
+            type: Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+
+        quantity: {
+            type: Number,
+            default: 1,
+            min: 1,
+        },
+
+        itemStatus: {
+            type: String,
+            enum: Object.values(ItemStatus),
+            default: ItemStatus.PENDING,
+        },
+
+        rental: {
+            type: RentalSchema,
+            required: true,
+        },
+
+        deposit: {
+            type: DepositSchema,
+            required: true,
+        },
+    },
+    {
+        _id: true,
+    }
+);
+
+export enum OrderStatus {
+    PENDING = "pending",
+    CONFIRMED = "confirmed",
+    SHIPPED = "shipped",
+    DELIVERED = "delivered",
+    RETURN_REQUESTED = "return_requested",
+    RETURNED = "returned",
+    CANCELLED = "cancelled",
+}
 
 const OrderSchema = new Schema(
     {
@@ -142,62 +359,24 @@ const OrderSchema = new Schema(
             },
         },
 
-        deliveryAddress: {
-            type: AddressSnapshotSchema,
+        shippingAddress: {
+            type: AddressSchema,
             required: true,
         },
 
-        subtotal: {
-            type: Number,
-            required: true,
-            min: 0,
-        },
-
-        securityDepositTotal: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        deliveryFee: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        discount: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        tax: {
-            type: Number,
-            default: 0,
-            min: 0,
-        },
-
-        total: {
-            type: Number,
-            required: true,
-            min: 0,
-        },
-
-        paymentMethod: {
-            type: String,
-            enum: Object.values(PaymentMethod),
+        billingAddress: {
+            type: AddressSchema,
             required: true,
         },
 
-        paymentStatus: {
-            type: String,
-            enum: Object.values(PaymentStatus),
-            default: PaymentStatus.PENDING,
+        payment: {
+            type: PaymentSchema,
+            required: true,
         },
 
-        transactionId: {
-            type: String,
-            default: null,
+        amount: {
+            type: AmountSchema,
+            required: true,
         },
 
         orderStatus: {
@@ -205,6 +384,7 @@ const OrderSchema = new Schema(
             enum: Object.values(OrderStatus),
             default: OrderStatus.PENDING,
         },
+
         createdBy: {
             type: Types.ObjectId,
             ref: "User",
@@ -225,12 +405,11 @@ const OrderSchema = new Schema(
     }
 );
 
-// Indexes
+/* ---------------- Indexes ---------------- */
+
 OrderSchema.index({ orderNumber: 1 });
 OrderSchema.index({ userId: 1, createdAt: -1 });
 OrderSchema.index({ orderStatus: 1 });
-OrderSchema.index({ paymentStatus: 1 });
+OrderSchema.index({ "payment.paymentStatus": 1 });
 
-const Order = model("Order", OrderSchema);
-
-export default Order;
+export default model("Order", OrderSchema);

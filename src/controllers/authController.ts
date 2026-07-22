@@ -129,11 +129,7 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
         });
 
         if (!otpRecord || !otpRecord.verified) {
-            failResponse(
-                res,
-                "Please verify your email first",
-                StatusCode.Bad_Request
-            );
+            failResponse(res, "Please verify your email first", StatusCode.Bad_Request);
             return;
         }
         const newUser: IUser | any = await createUserService({
@@ -191,10 +187,7 @@ export const signupUser = async (req: Request, res: Response): Promise<void> => 
     }
 };
 
-export const sendOtp = async (
-    req: Request,
-    res: Response
-): Promise<void> => {
+export const sendOtp = async (req: Request, res: Response): Promise<void> => {
     try {
         const { email, name } = req.body;
         if (!email) {
@@ -226,56 +219,27 @@ export const sendOtp = async (
             "Email Verification",
             html
         );
-        successResponse(
-            res,
-            null,
-            "OTP sent successfully",
-            StatusCode.OK
-        );
+        successResponse(res, null, "OTP sent successfully", StatusCode.OK);
     } catch (error: any) {
         console.error(error);
-        failResponse(
-            res,
-            error.message || "Failed to send OTP",
-            StatusCode.Bad_Request
-        );
+        failResponse(res, error.message || "Failed to send OTP", StatusCode.Bad_Request);
     }
 };
 
-export const verifyUserOtp = async (
-    req: Request,
-    res: Response
-): Promise<void> => {
+export const verifyUserOtp = async (req: Request, res: Response): Promise<void> => {
     try {
         const { email, otp } = req.body;
         if (!email || !otp) {
-            failResponse(
-                res,
-                "Email and OTP are required",
-                StatusCode.Bad_Request
-            );
+            failResponse(res, "Email and OTP are required", StatusCode.Bad_Request);
             return;
         }
         const isVerified = await verifyOtp(email, otp);
         if (!isVerified) {
-            failResponse(
-                res,
-                "Invalid or Expired OTP",
-                StatusCode.Bad_Request
-            );
+            failResponse(res, "Invalid or Expired OTP", StatusCode.Bad_Request);
             return;
         }
-        successResponse(
-            res,
-            null,
-            "OTP verified successfully",
-            StatusCode.OK
-        );
+        successResponse(res, null, "OTP verified successfully", StatusCode.OK);
     } catch (error: any) {
-        failResponse(
-            res,
-            error.message,
-            StatusCode.Bad_Request
-        );
+        failResponse(res, error.message, StatusCode.Bad_Request);
     }
 };
