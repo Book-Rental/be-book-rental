@@ -1,5 +1,12 @@
 import { Router } from "express";
-import { loginUser, logout, changePassword, signupUser, sendOtp, verifyUserOtp } from "../controllers/authController";
+import {
+    loginUser,
+    logout,
+    changePassword,
+    signupUser,
+    sendOtp,
+    verifyUserOtp,
+} from "../controllers/authController";
 import { auth } from "../middlewares/authMiddleware";
 import { validatePassword } from "../middlewares/passwordValidation";
 

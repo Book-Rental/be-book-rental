@@ -1,72 +1,97 @@
 import { Document, Types } from "mongoose";
-import { OrderStatus, OrderType, PaymentStatus } from "../models/Order";
+import { OrderStatus, PaymentStatus, PaymentMethod, DepositStatus } from "../models/Order";
 
-export interface IAddressSnapshot {
-    name?: string;
-    type?: "home" | "work" | "other";
-    street: string;
+/* ---------------- Address ---------------- */
+
+export interface IAddress {
+    name: string;
+    phone: string;
+    type: "home" | "work" | "other";
+    addressLine1: string;
+    addressLine2?: string;
+    landmark?: string;
     city: string;
     state: string;
-    zipCode: string;
+    pincode: string;
     country: string;
-    phone: string;
 }
+
+/* ---------------- Rental ---------------- */
+
+export interface IRental {
+    rentalPrice: number;
+    securityDeposit: number;
+    rentalDuration: number;
+    rentStartDate: Date;
+    expectedReturnDate: Date;
+    actualReturnDate?: Date | null;
+    extensionCount: number;
+    maximumExtensions: number;
+    extendedUntil?: Date | null;
+    lateFee: number;
+}
+
+/* ---------------- Deposit ---------------- */
+
+export interface IDeposit {
+    amount: number;
+    status: DepositStatus;
+    refundedAmount: number;
+    deductionAmount: number;
+    deductionReason?: string;
+    refundedDate?: Date | null;
+}
+
+/* ---------------- Order Item ---------------- */
 
 export interface IOrderItem {
     bookId: Types.ObjectId;
     sellerId: Types.ObjectId;
-
-    orderType: OrderType;
-
     quantity: number;
-
-    purchasePrice: number;
-
-    rentalPrice: number;
-
-    rentalDuration: number;
-
-    securityDeposit: number;
-
-    rentStartDate?: Date;
-
-    expectedReturnDate?: Date;
-
-    actualReturnDate?: Date;
-
-    lateFee: number;
+    itemStatus: OrderStatus;
+    rental: IRental;
+    deposit: IDeposit;
 }
+
+/* ---------------- Payment ---------------- */
+
+export interface IPayment {
+    paymentMethod: PaymentMethod;
+    paymentStatus: PaymentStatus;
+    transactionId: string | null;
+    paidAt?: Date | null;
+}
+
+/* ---------------- Amount ---------------- */
+
+export interface IAmount {
+    rentalAmount: number;
+    securityDeposit: number;
+    deliveryFee: number;
+    discount: number;
+    tax: number;
+    totalAmount: number;
+    refundAmount: number;
+}
+
+/* ---------------- Order ---------------- */
 
 export interface IOrder extends Document {
     orderNumber: string;
 
-    customerId: Types.ObjectId;
+    userId: Types.ObjectId;
 
     items: IOrderItem[];
 
-    deliveryAddress: IAddressSnapshot;
+    shippingAddress: IAddress;
 
-    subtotal: number;
+    billingAddress: IAddress;
 
-    deliveryCharge: number;
+    payment: IPayment;
 
-    discount: number;
-
-    tax: number;
-
-    totalAmount: number;
-
-    paymentMethod: "COD" | "UPI" | "CARD" | "NET_BANKING";
-
-    paymentStatus: PaymentStatus;
-
-    transactionId?: string | null;
+    amount: IAmount;
 
     orderStatus: OrderStatus;
-
-    cancellationReason?: string;
-
-    notes?: string;
 
     createdBy?: Types.ObjectId;
 

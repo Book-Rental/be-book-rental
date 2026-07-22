@@ -6,7 +6,6 @@ export const generateOtp = (): string => {
 };
 
 export const saveOtp = async (email: string, otp: string) => {
-
     await Otp.deleteMany({ email });
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     const otpData = new Otp({
@@ -19,10 +18,7 @@ export const saveOtp = async (email: string, otp: string) => {
     return await otpData.save();
 };
 
-export const verifyOtp = async (
-    email: string,
-    otp: string
-): Promise<boolean> => {
+export const verifyOtp = async (email: string, otp: string): Promise<boolean> => {
     const otpRecord = await Otp.findOne({ email });
 
     if (!otpRecord) {

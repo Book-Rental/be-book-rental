@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import Book from "../models/Book";
-import Order, { OrderStatus, OrderType, PaymentStatus } from "../models/Order";
+import Order, { OrderStatus, PaymentStatus } from "../models/Order";
 import { IOrder } from "../models/orderInteface";
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
@@ -18,37 +18,61 @@ export const getAllOrdersService = async (query: {
 
         const { userId, orderStatus, orderId } = query;
 
-        const searchFilter: any = {};
+        const filter: any = {
+            isActive: true,
+        };
 
         if (userId) {
-            searchFilter.userId = userId;
+            filter.userId = userId;
         }
 
         if (orderStatus) {
-            searchFilter.orderStatus = orderStatus;
+            filter.orderStatus = orderStatus;
         }
 
         if (orderId) {
-            searchFilter._id = orderId;
+            filter._id = orderId;
         }
 
-        const totalRecords = await Order.countDocuments(searchFilter);
+        const totalRecords = await Order.countDocuments(filter);
 
         const totalPages = Math.ceil(totalRecords / limit);
 
         const hasMore = page < totalPages;
 
-        const orders = await Order.find(searchFilter)
+        const orders = await Order.find(filter)
             .populate({
                 path: "items.bookId",
                 select: "name author coverImage",
             })
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
+
+        const formattedOrders = orders.map((order: any) => ({
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            orderDate: order.createdAt,
+            orderStatus: order.orderStatus,
+            paymentStatus: order.payment.paymentStatus,
+            totalAmount: order.amount.totalAmount,
+
+            items: order.items.map((item: any) => ({
+                bookId: item.bookId?._id,
+                bookName: item.bookId?.name,
+                author: item.bookId?.author,
+                coverImage: item.bookId?.coverImage,
+
+                quantity: item.quantity,
+                itemStatus: item.itemStatus,
+
+                rentalDuration: item.rental?.rentalDuration,
+            })),
+        }));
 
         return {
-            orders,
+            orders: formattedOrders,
             meta: {
                 totalRecords,
                 totalPages,
@@ -65,11 +89,10 @@ export const getAllOrdersService = async (query: {
 //get By Order
 export const getOrderByOrderIdService = async (orderId: string) => {
     try {
-        const order = await Order.findById(orderId)
-            .populate({
-                path: "items.bookId",
-                select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit",
-            });
+        const order = await Order.findById(orderId).populate({
+            path: "items.bookId",
+            select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit",
+        });
 
         if (!order) {
             throw new Error("Order not found.");
@@ -81,24 +104,15 @@ export const getOrderByOrderIdService = async (orderId: string) => {
     }
 };
 
-//Create Order
+// //Create Order
+
 export const createOrderService = async (orderData: any) => {
     try {
-        const {
-            userId,
-            items,
-            deliveryAddress,
-            paymentMethod,
-            subtotal,
-            securityDepositTotal,
-            deliveryFee,
-            tax,
-            discount,
-            total,
-            createdBy,
-        } = orderData;
+        const { userId, items, shippingAddress, billingAddress, payment, amount, createdBy } =
+            orderData;
 
         // ================= User Validation =================
+
         const user = await User.findById(userId);
 
         if (!user) {
@@ -107,7 +121,11 @@ export const createOrderService = async (orderData: any) => {
 
         const orderItems = [];
 
+        let calculatedRentalAmount = 0;
+        let calculatedSecurityDeposit = 0;
+
         // ================= Validate Books =================
+
         for (const item of items) {
             const book: any = await Book.findById(item.bookId);
 
@@ -123,122 +141,120 @@ export const createOrderService = async (orderData: any) => {
                 throw new Error(`${book.name} is unavailable.`);
             }
 
-            if (item.orderType === OrderType.BUY && !book.availableForSale) {
-                throw new Error(`${book.name} is not available for sale.`);
-            }
-
-            if (item.orderType === OrderType.RENT && !book.availableForRent) {
+            if (!book.availableForRent) {
                 throw new Error(`${book.name} is not available for rent.`);
             }
 
-            // ======================================
-            // Validate Frontend Amounts
-            // ======================================
+            // ================= Rental Calculation =================
 
-            let calculatedSubtotal = 0;
-            let calculatedSecurityDeposit = 0;
-
-            for (const item of items) {
-                const book: any = await Book.findById(item.bookId);
-
-                if (!book) {
-                    throw new Error(`Book not found: ${item.bookId}`);
-                }
-
-                if (item.orderType === OrderType.BUY) {
-                    calculatedSubtotal += Number(book.purchasePrice) * Number(item.quantity);
-                } else {
-                    let rentalPrice = 0;
-
-                    switch (item.rentalType) {
-                        case "day":
-                            rentalPrice = Number(book.rentalPricePerDay);
-                            break;
-
-                        case "week":
-                            rentalPrice = Number(book.rentalPricePerWeek);
-                            break;
-
-                        case "month":
-                            rentalPrice = Number(book.rentalPricePerMonth);
-                            break;
-
-                        default:
-                            throw new Error("Invalid rental type.");
-                    }
-
-                    calculatedSubtotal += rentalPrice * Number(item.quantity);
-
-                    calculatedSecurityDeposit +=
-                        Number(book.securityDeposit) * Number(item.quantity);
-                }
-            }
-
-            const calculatedTotal =
-                calculatedSubtotal +
-                calculatedSecurityDeposit +
-                Number(deliveryFee) +
-                Number(tax) -
-                Number(discount);
-
-            // Validate subtotal
-            if (Number(subtotal) !== calculatedSubtotal) {
-                throw new Error(
-                    `Subtotal mismatch. Expected ${calculatedSubtotal}, Received ${subtotal}`
-                );
-            }
-
-            if (Number(securityDepositTotal) !== calculatedSecurityDeposit) {
-                throw new Error(
-                    `Security Deposit mismatch. Expected ${calculatedSecurityDeposit}, Received ${securityDepositTotal}`
-                );
-            }
-
-            if (Number(total) !== calculatedTotal) {
-                throw new Error(
-                    `Total Amount mismatch. Expected ${calculatedTotal}, Received ${total}`
-                );
-            }
             let rentalPrice = 0;
+            let rentalDuration = 0;
 
-            if (item.orderType === OrderType.RENT) {
-                switch (item.rentalType) {
-                    case "day":
-                        rentalPrice = Number(book.rentalPricePerDay);
-                        break;
+            const rentStartDate = new Date();
+            const expectedReturnDate = new Date(rentStartDate);
 
-                    case "week":
-                        rentalPrice = Number(book.rentalPricePerWeek);
-                        break;
+            switch (item.rentalType) {
+                case "day":
+                    rentalPrice = Number(book.rentalPricePerDay);
+                    rentalDuration = 1;
+                    expectedReturnDate.setDate(expectedReturnDate.getDate() + 1);
+                    break;
 
-                    case "month":
-                        rentalPrice = Number(book.rentalPricePerMonth);
-                        break;
+                case "week":
+                    rentalPrice = Number(book.rentalPricePerWeek);
+                    rentalDuration = 7;
+                    expectedReturnDate.setDate(expectedReturnDate.getDate() + 7);
+                    break;
 
-                    default:
-                        throw new Error("Invalid rental type.");
-                }
+                case "month":
+                    rentalPrice = Number(book.rentalPricePerMonth);
+                    rentalDuration = 30;
+                    expectedReturnDate.setDate(expectedReturnDate.getDate() + 30);
+                    break;
+
+                default:
+                    throw new Error("Invalid rental type.");
             }
-            orderItems.push({
-                bookId: book._id,
-                sellerId: book.sellerId,
-                orderType: item.orderType,
-                quantity: item.quantity,
-                rentalPrice: item.orderType === OrderType.RENT ? rentalPrice : 0,
 
-                securityDeposit:
-                    item.orderType === OrderType.RENT ? Number(book.securityDeposit) : 0,
-                rentStartDate: item.rentStartDate || null,
-                expectedReturnDate: item.expectedReturnDate || null,
-                actualReturnDate: null,
-                lateFee: 0,
+            calculatedRentalAmount += rentalPrice * item.quantity;
+
+            calculatedSecurityDeposit += Number(book.securityDeposit) * item.quantity;
+
+            orderItems.push({
+                bookId: new mongoose.Types.ObjectId(book._id),
+
+                sellerId: new mongoose.Types.ObjectId(book.sellerId),
+
+                quantity: item.quantity,
+
+                itemStatus: OrderStatus.PENDING,
+
+                rental: {
+                    rentalPrice,
+
+                    securityDeposit: Number(book.securityDeposit),
+
+                    rentalDuration,
+
+                    rentStartDate,
+
+                    expectedReturnDate,
+
+                    actualReturnDate: null,
+
+                    extensionCount: 0,
+
+                    maximumExtensions: 2,
+
+                    extendedUntil: null,
+
+                    lateFee: 0,
+                },
+
+                deposit: {
+                    amount: Number(book.securityDeposit),
+
+                    status: "pending",
+
+                    refundedAmount: 0,
+
+                    deductionAmount: 0,
+
+                    deductionReason: "",
+
+                    refundedDate: null,
+                },
             });
         }
 
+        // ================= Amount Validation =================
+
+        const calculatedTotal =
+            calculatedRentalAmount +
+            calculatedSecurityDeposit +
+            Number(amount.deliveryFee) +
+            Number(amount.tax) -
+            Number(amount.discount);
+
+        if (Number(amount.rentalAmount) !== calculatedRentalAmount) {
+            throw new Error(`Rental Amount mismatch. Expected ${calculatedRentalAmount}`);
+        }
+
+        if (Number(amount.securityDeposit) !== calculatedSecurityDeposit) {
+            throw new Error(`Security Deposit mismatch. Expected ${calculatedSecurityDeposit}`);
+        }
+
+        if (Number(amount.totalAmount) !== calculatedTotal) {
+            throw new Error(`Total Amount mismatch. Expected ${calculatedTotal}`);
+        }
+
+        // Continue with Order Creation in Part 2B...
         // ================= Generate Order Number =================
+
         const orderNumber = `ORD${Date.now()}`;
 
         // ================= Create Order =================
+
         const order = await Order.create({
             orderNumber,
 
@@ -246,27 +262,28 @@ export const createOrderService = async (orderData: any) => {
 
             items: orderItems,
 
-            deliveryAddress,
+            shippingAddress,
 
-            subtotal: Number(subtotal),
+            billingAddress,
 
-            securityDepositTotal: Number(securityDepositTotal),
+            payment: {
+                paymentMethod: payment.paymentMethod,
+                paymentStatus: PaymentStatus.SUCCESS,
+                transactionId: payment.transactionId,
+                paidAt: new Date(),
+            },
 
-            deliveryFee: Number(deliveryFee),
-
-            tax: Number(tax),
-
-            discount: Number(discount),
-
-            total: Number(total),
-
-            paymentMethod,
-
-            paymentStatus: PaymentStatus.PENDING,
+            amount: {
+                rentalAmount: calculatedRentalAmount,
+                securityDeposit: calculatedSecurityDeposit,
+                deliveryFee: Number(amount.deliveryFee),
+                discount: Number(amount.discount),
+                tax: Number(amount.tax),
+                totalAmount: calculatedTotal,
+                refundAmount: 0,
+            },
 
             orderStatus: OrderStatus.PENDING,
-
-            transactionId: null,
 
             createdBy,
 
@@ -275,10 +292,12 @@ export const createOrderService = async (orderData: any) => {
             isActive: true,
         });
 
+        // ================= Return Order =================
+
         return await Order.findById(order._id)
-            .populate("userId", "firstName lastName email")
-            .populate("items.bookId", "name author images purchasePrice rentalPrice")
-            .populate("items.sellerId", "firstName lastName email");
+            .populate("items.bookId", "name author publisher language isbn edition coverImage")
+            .populate("items.sellerId", "firstName lastName")
+            .populate("userId", "firstName lastName email phone");
     } catch (error) {
         throw error;
     }
@@ -287,16 +306,22 @@ export const createOrderService = async (orderData: any) => {
 export const getOrderByUserIdService = async (userId: string, query: any = {}) => {
     try {
         const { skip, limit, page } = buildPaginationQuery(query);
-        const orderStatus = query.orderStatus;
-        const filter: any = { userId };
 
-        // Apply orderStatus filter if provided
+        const { orderStatus } = query;
+
+        const filter: any = {
+            userId,
+            isActive: true,
+        };
+
         if (orderStatus && orderStatus !== "ALL") {
             filter.orderStatus = orderStatus;
         }
 
         const totalRecords = await Order.countDocuments(filter);
+
         const totalPages = Math.ceil(totalRecords / limit);
+
         const hasMore = page < totalPages;
 
         const orders = await Order.find(filter)
@@ -304,11 +329,57 @@ export const getOrderByUserIdService = async (userId: string, query: any = {}) =
                 path: "items.bookId",
                 select: "name author coverImage",
             })
+            .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
+
+        const formattedOrders = orders.map((order: any) => ({
+            orderId: order._id,
+
+            orderNumber: order.orderNumber,
+
+            orderDate: order.createdAt,
+
+            orderStatus: order.orderStatus,
+
+            paymentStatus: order.payment.paymentStatus,
+
+            totalAmount: order.amount.totalAmount,
+
+            totalBooks: order.items.length,
+
+            items: order.items.map((item: any) => ({
+                bookId: item.bookId?._id,
+
+                name: item.bookId?.name,
+
+                author: item.bookId?.author,
+
+                coverImage: item.bookId?.coverImage,
+
+                quantity: item.quantity,
+
+                itemStatus: item.itemStatus,
+
+                rentalType:
+                    item.rental.rentalDuration === 1
+                        ? "day"
+                        : item.rental.rentalDuration === 7
+                          ? "week"
+                          : "month",
+
+                rentalPrice: item.rental.rentalPrice,
+
+                securityDeposit: item.rental.securityDeposit,
+
+                totalPrice: item.quantity * (item.rental.rentalPrice + item.rental.securityDeposit),
+            })),
+        }));
 
         return {
-            orders,
+            orders: formattedOrders,
+
             meta: {
                 totalRecords,
                 totalPages,
@@ -502,10 +573,19 @@ export const getSellerDashboardService = async (sellerUserId: string) => {
 };
 
 export const getOrderBookDetailsService = async (orderId: string, bookId: string) => {
-    const order: any = await Order.findById(orderId).populate({
-        path: "items.bookId",
-        select: "name author coverImage",
-    });
+    const order: any = await Order.findById(orderId)
+        .populate({
+            path: "items.bookId",
+            select: "name author publisher language isbn categoryId edition coverImage",
+            populate: {
+                path: "categoryId",
+                select: "name",
+            },
+        })
+        .populate({
+            path: "items.sellerId",
+            select: "name",
+        });
 
     if (!order) {
         throw new Error("Order not found.");
@@ -518,32 +598,96 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
     }
 
     return {
-        _id: orderItem._id,
+        orderId: order._id,
 
-        bookId: {
-            _id: orderItem.bookId._id,
-            name: orderItem.bookId.name,
-            author: orderItem.bookId.author,
-            coverImage: orderItem.bookId.coverImage,
-        },
+        orderNumber: order.orderNumber,
 
-        sellerId: orderItem.sellerId,
+        orderDate: order.createdAt,
 
-        orderType: orderItem.orderType,
+        orderStatus: order.orderStatus,
 
         quantity: orderItem.quantity,
 
-        // These values come from the ORDER
-        purchasePrice: orderItem.purchasePrice,
-        rentalPrice: orderItem.rentalPrice,
-        securityDeposit: orderItem.securityDeposit,
-
         itemStatus: orderItem.itemStatus,
 
-        rentStartDate: orderItem.rentStartDate,
-        expectedReturnDate: orderItem.expectedReturnDate,
-        actualReturnDate: orderItem.actualReturnDate,
+        book: {
+            _id: orderItem.bookId._id,
+            name: orderItem.bookId.name,
+            author: orderItem.bookId.author,
+            publisher: orderItem.bookId.publisher,
+            language: orderItem.bookId.language,
+            isbn: orderItem.bookId.isbn,
+            category: orderItem.bookId.categoryId?.name,
+            edition: orderItem.bookId.edition,
+            coverImage: orderItem.bookId.coverImage,
+        },
 
-        lateFee: orderItem.lateFee,
+        seller: {
+            _id: orderItem.sellerId?._id,
+            name: orderItem.sellerId?.name,
+        },
+
+        rental: {
+            rentalPrice: orderItem.rental.rentalPrice,
+            securityDeposit: orderItem.rental.securityDeposit,
+            rentalDuration: orderItem.rental.rentalDuration,
+            rentStartDate: orderItem.rental.rentStartDate,
+            expectedReturnDate: orderItem.rental.expectedReturnDate,
+            actualReturnDate: orderItem.rental.actualReturnDate,
+            extensionCount: orderItem.rental.extensionCount,
+            maximumExtensions: orderItem.rental.maximumExtensions,
+            extendedUntil: orderItem.rental.extendedUntil,
+            lateFee: orderItem.rental.lateFee,
+        },
+
+        shippingAddress: {
+            name: order.shippingAddress.name,
+            phone: order.shippingAddress.phone,
+            addressLine1: order.shippingAddress.addressLine1,
+            addressLine2: order.shippingAddress.addressLine2,
+            landmark: order.shippingAddress.landmark,
+            city: order.shippingAddress.city,
+            state: order.shippingAddress.state,
+            pincode: order.shippingAddress.pincode,
+            country: order.shippingAddress.country,
+        },
+
+        billingAddress: {
+            name: order.billingAddress.name,
+            phone: order.billingAddress.phone,
+            addressLine1: order.billingAddress.addressLine1,
+            addressLine2: order.billingAddress.addressLine2,
+            landmark: order.billingAddress.landmark,
+            city: order.billingAddress.city,
+            state: order.billingAddress.state,
+            pincode: order.billingAddress.pincode,
+            country: order.billingAddress.country,
+        },
+
+        payment: {
+            paymentMethod: order.payment.paymentMethod,
+            paymentStatus: order.payment.paymentStatus,
+            transactionId: order.payment.transactionId,
+            paidAt: order.payment.paidAt,
+        },
+
+        priceSummary: {
+            rentalAmount: order.amount.rentalAmount,
+            securityDeposit: order.amount.securityDeposit,
+            deliveryFee: order.amount.deliveryFee,
+            discount: order.amount.discount,
+            tax: order.amount.tax,
+            totalAmount: order.amount.totalAmount,
+            refundAmount: order.amount.refundAmount,
+        },
+
+        deposit: {
+            amount: orderItem.deposit.amount,
+            status: orderItem.deposit.status,
+            refundedAmount: orderItem.deposit.refundedAmount,
+            deductionAmount: orderItem.deposit.deductionAmount,
+            deductionReason: orderItem.deposit.deductionReason,
+            refundedDate: orderItem.deposit.refundedDate,
+        },
     };
 };
