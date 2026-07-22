@@ -599,13 +599,14 @@ export const getSellerRecentOrdersService = async (
             {
                 $facet: {
                     metadata: [{ $count: "totalRecords" }],
-                    data: [
+                data: [
                         { $skip: skip },
                         { $limit: limit },
                         {
                             $project: {
                                 _id: 0,
                                 orderId: "$_id",
+                                orderItemId: "$items._id",
                                 orderNumber: 1,
                                 bookId: "$items.bookId",
                                 bookName: { $ifNull: ["$book.name", "Unknown"] },
@@ -683,6 +684,7 @@ export const getSellerAllOrdersService = async (
                             $project: {
                                 _id: 0,
                                 orderId: "$_id",
+                                orderItemId: "$items._id",
                                 orderNumber: 1,
                                 bookId: "$items.bookId",
                                 bookName: { $ifNull: ["$book.name", "Unknown"] },
