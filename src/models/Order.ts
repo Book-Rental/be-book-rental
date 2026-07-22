@@ -1,72 +1,6 @@
 import { model, Schema, Types } from "mongoose";
+import { addressSchema } from "./User";
 
-export const AddressSchema = new Schema(
-    {
-        name: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        phone: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        type: {
-            type: String,
-            enum: ["home", "work", "other"],
-            default: "home",
-        },
-
-        addressLine1: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        addressLine2: {
-            type: String,
-            default: "",
-            trim: true,
-        },
-
-        landmark: {
-            type: String,
-            default: "",
-            trim: true,
-        },
-
-        city: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        state: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        pincode: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        country: {
-            type: String,
-            required: true,
-            default: "India",
-            trim: true,
-        },
-    },
-    {
-        _id: false,
-    }
-);
 
 export const RentalSchema = new Schema(
     {
@@ -190,11 +124,13 @@ export enum PaymentStatus {
 
 export enum PaymentMethod {
     COD = "COD",
+    CASH = "CASH", 
     UPI = "UPI",
     CARD = "CARD",
     NET_BANKING = "NET_BANKING",
+    GOOGLE_PAY = "GOOGLE_PAY",
+    PHONE_PE = "PHONE_PE",     // Matches 'phonepay' widget selection
 }
-
 export const PaymentSchema = new Schema(
     {
         paymentMethod: {
@@ -361,12 +297,12 @@ const OrderSchema = new Schema(
         },
 
         shippingAddress: {
-            type: AddressSchema,
+            type: addressSchema,
             required: true,
         },
 
         billingAddress: {
-            type: AddressSchema,
+            type: addressSchema,
             required: true,
         },
 
