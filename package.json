@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon - exec 'ts-node' src/server.ts",
-    "build": "npm install --include=dev && tsc",
+    "build": "npm install --include=dev && tsc && copyfiles -u 1 src/templates/**/*.hbs dist",
     "start": "node dist/server.js",
     "test": "vitest --config vitest.config.ts --run",
     "test:watch": "vitest --config vitest.config.ts",
@@ -41,6 +41,7 @@
     "@types/node": "^22.20.1",
     "@types/supertest": "^7.2.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "copyfiles": "^2.4.1",
     "prettier": "^3.9.5",
     "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
