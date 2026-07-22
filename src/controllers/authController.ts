@@ -12,8 +12,8 @@ import { comparePasswords } from "../utils/passwordValidation";
 import { mergeGuestCartIntoUserCartService } from "../services/cartService";
 import { generateOtp, saveOtp, verifyOtp } from "../services/otp.service";
 import { sendEmail } from "../services/email.service";
-import { otpEmailTemplate } from "../templates/otpEmail";
 import Otp from "../models/Otp";
+import { compileTemplate } from "../templates/template";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -210,7 +210,12 @@ export const sendOtp = async (
         const otp = generateOtp();
         await saveOtp(email, otp);
 
-        const html = otpEmailTemplate(name ?? "User", otp);
+        const html = compileTemplate("otpEmail.hbs", {
+            title: "Email Verification",
+            name: name ?? "User",
+            otp,
+            year: new Date().getFullYear(),
+        });
         await sendEmail(
             [
                 {
