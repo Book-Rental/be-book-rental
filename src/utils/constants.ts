@@ -145,6 +145,15 @@ export const Messages = {
     Order_Fetch_success: "Order fetched successfully",
     OrderID_Is_Invalid: "OrderId is Invalid ",
     Seller_Dashboard_Fetched: "Seller dashboard fetched successfully",
+    Seller_Recent_Orders_Fetched: "Recent orders fetched successfully",
+    Seller_All_Orders_Fetched: "Seller orders fetched successfully",
+    Seller_Order_Item_Fetched: "Order item details fetched successfully",
+    Seller_Order_Item_Not_Found: "Order item not found",
+    Seller_Order_Item_Approved: "Order item approved successfully",
+    Seller_Order_Item_Rejected: "Order item rejected successfully",
+    Seller_Order_Item_Status_Update_Failed: "Failed to update order item status",
+    Invalid_Action_Approve_Reject: "Invalid action. Must be 'approve' or 'reject'",
+    Order_Item_Already_Processed: "Order item has already been processed",
     // =========================
     // Address
     // =========================
