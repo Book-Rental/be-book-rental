@@ -6,8 +6,11 @@ import {
     getOrderBookDetailsService,
     getOrderByOrderIdService,
     getOrderByUserIdService,
+    getSellerAllOrdersService,
     getSellerDashboardService,
-    getSellerOrdersService,
+    getSellerOrderItemDetailService,
+    getSellerRecentOrdersService,
+    updateSellerOrderItemStatusService,
 } from "../services/orderService";
 import { Messages } from "../utils/constants";
 import { failResponse, successResponse } from "../utils/response";
@@ -266,7 +269,7 @@ export const getSellerDashboard = async (req: Request, res: Response): Promise<v
     }
 };
 
-// Seller dashboard orders: returns only orders/items for the authenticated seller.
+// Seller orders (item-level with buyer name + status filter, paginated)
 export const getSellerOrders = async (req: Request, res: Response): Promise<void> => {
     try {
         const authUser: any = (req as any).user;
@@ -282,8 +285,112 @@ export const getSellerOrders = async (req: Request, res: Response): Promise<void
             return;
         }
 
-        const orders = await getSellerOrdersService(sellerUserId, req.query);
-        successResponse(res, orders, Messages.Order_Fetch_success, StatusCode.OK);
+        const orders = await getSellerAllOrdersService(sellerUserId, req.query);
+        successResponse(res, orders, Messages.Seller_All_Orders_Fetched, StatusCode.OK);
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+// Seller recent orders (item-level, default limit 5)
+export const getSellerRecentOrders = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const authUser: any = (req as any).user;
+        const sellerUserId: string | undefined = authUser?.id || authUser?._id || authUser?.userId;
+
+        if (!sellerUserId) {
+            failResponse(res, "Unauthorized", StatusCode.Unauthorized);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(sellerUserId)) {
+            failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const orders = await getSellerRecentOrdersService(sellerUserId, req.query);
+        successResponse(res, orders, Messages.Seller_Recent_Orders_Fetched, StatusCode.OK);
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+// Seller approve/reject order item
+export const updateSellerOrderItemStatus = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const authUser: any = (req as any).user;
+        const sellerUserId: string | undefined = authUser?.id || authUser?._id || authUser?.userId;
+
+        if (!sellerUserId) {
+            failResponse(res, "Unauthorized", StatusCode.Unauthorized);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(sellerUserId)) {
+            failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const { orderItemId } = req.params as { orderItemId: string };
+        if (!orderItemId || !mongoose.Types.ObjectId.isValid(orderItemId)) {
+            failResponse(res, "Invalid Order Item Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const { action } = req.body;
+        if (!action || !["approve", "reject"].includes(action)) {
+            failResponse(res, Messages.Invalid_Action_Approve_Reject, StatusCode.Bad_Request);
+            return;
+        }
+
+        const result = await updateSellerOrderItemStatusService(sellerUserId, orderItemId, action);
+        
+        const message = action === "approve" 
+            ? Messages.Seller_Order_Item_Approved 
+            : Messages.Seller_Order_Item_Rejected;
+        
+        successResponse(res, result, message, StatusCode.OK);
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Seller_Order_Item_Status_Update_Failed,
+            StatusCode.Bad_Request
+        );
+    }
+};
+
+// Seller order item detail (full info for a specific order item)
+export const getSellerOrderItemDetail = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const authUser: any = (req as any).user;
+        const sellerUserId: string | undefined = authUser?.id || authUser?._id || authUser?.userId;
+
+        if (!sellerUserId) {
+            failResponse(res, "Unauthorized", StatusCode.Unauthorized);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(sellerUserId)) {
+            failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const { orderItemId } = req.params as { orderItemId: string };
+        if (!orderItemId || !mongoose.Types.ObjectId.isValid(orderItemId)) {
+            failResponse(res, "Invalid Order Item Id.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const detail = await getSellerOrderItemDetailService(sellerUserId, orderItemId);
+        successResponse(res, detail, Messages.Seller_Order_Item_Fetched, StatusCode.OK);
     } catch (error: any) {
         failResponse(
             res,

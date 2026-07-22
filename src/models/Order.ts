@@ -282,6 +282,7 @@ export enum ItemStatus {
     RETURN_REQUESTED = "return_requested",
     RETURNED = "returned",
     CANCELLED = "cancelled",
+    REJECTED = "rejected",
 }
 
 export const OrderItemSchema = new Schema(

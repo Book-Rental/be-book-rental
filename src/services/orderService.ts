@@ -1,9 +1,10 @@
 import mongoose from "mongoose";
 import Book from "../models/Book";
-import Order, { OrderStatus, PaymentStatus } from "../models/Order";
+import Order, { OrderStatus, PaymentStatus, ItemStatus } from "../models/Order";
 import { IOrder } from "../models/orderInteface";
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
+import { Messages } from "../utils/constants";
 
 //getAll Order
 export const getAllOrdersService = async (query: {
@@ -570,6 +571,331 @@ export const getSellerDashboardService = async (sellerUserId: string) => {
     } catch (error) {
         throw error;
     }
+};
+
+// Service 1: Recent Seller Orders (item-level, default limit 5)
+export const getSellerRecentOrdersService = async (
+    sellerUserId: string,
+    query: { page?: number; limit?: number } = {}
+) => {
+    try {
+        const { skip, limit, page } = buildPaginationQuery({ ...query, limit: query.limit || 5 });
+
+        // Find orders containing seller's items, then unwind + match to get only seller items
+        const [result] = await Order.aggregate([
+            { $match: { "items.sellerId": new mongoose.Types.ObjectId(sellerUserId) } },
+            { $unwind: "$items" },
+            { $match: { "items.sellerId": new mongoose.Types.ObjectId(sellerUserId) } },
+            {
+                $lookup: {
+                    from: "books",
+                    localField: "items.bookId",
+                    foreignField: "_id",
+                    as: "book",
+                },
+            },
+            { $unwind: { path: "$book", preserveNullAndEmptyArrays: true } },
+            { $sort: { createdAt: -1 } },
+            {
+                $facet: {
+                    metadata: [{ $count: "totalRecords" }],
+                    data: [
+                        { $skip: skip },
+                        { $limit: limit },
+                        {
+                            $project: {
+                                _id: 0,
+                                orderId: "$_id",
+                                orderNumber: 1,
+                                bookId: "$items.bookId",
+                                bookName: { $ifNull: ["$book.name", "Unknown"] },
+                                rentalPrice: { $ifNull: ["$items.rental.rentalPrice", 0] },
+                                status: "$items.itemStatus",
+                                date: "$createdAt",
+                            },
+                        },
+                    ],
+                },
+            },
+        ]);
+
+        const orders = result?.data || [];
+        const totalRecords = result?.metadata?.[0]?.totalRecords || 0;
+        const totalPages = Math.ceil(totalRecords / limit);
+        const hasMore = page < totalPages;
+
+        return {
+            orders,
+            meta: { totalRecords, totalPages, currentPage: page, limit, hasMore },
+        };
+    } catch (error) {
+        throw error;
+    }
+};
+
+// Service 2: All Seller Orders (item-level with buyer name + status filter)
+export const getSellerAllOrdersService = async (
+    sellerUserId: string,
+    query: { page?: number; limit?: number; status?: string } = {}
+) => {
+    try {
+        const { skip, limit, page } = buildPaginationQuery(query);
+
+        const matchStage: any = {
+            "items.sellerId": new mongoose.Types.ObjectId(sellerUserId),
+        };
+
+        // If status filter is provided, filter at item level
+        if (query.status && query.status !== "ALL") {
+            matchStage["items.itemStatus"] = query.status;
+        }
+
+        const [result] = await Order.aggregate([
+            { $match: { "items.sellerId": new mongoose.Types.ObjectId(sellerUserId) } },
+            { $unwind: "$items" },
+            { $match: matchStage },
+            {
+                $lookup: {
+                    from: "books",
+                    localField: "items.bookId",
+                    foreignField: "_id",
+                    as: "book",
+                },
+            },
+            { $unwind: { path: "$book", preserveNullAndEmptyArrays: true } },
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "userId",
+                    foreignField: "_id",
+                    as: "buyer",
+                },
+            },
+            { $unwind: { path: "$buyer", preserveNullAndEmptyArrays: true } },
+            { $sort: { createdAt: -1 } },
+            {
+                $facet: {
+                    metadata: [{ $count: "totalRecords" }],
+                    data: [
+                        { $skip: skip },
+                        { $limit: limit },
+                        {
+                            $project: {
+                                _id: 0,
+                                orderId: "$_id",
+                                orderNumber: 1,
+                                bookId: "$items.bookId",
+                                bookName: { $ifNull: ["$book.name", "Unknown"] },
+                                rentalPrice: { $ifNull: ["$items.rental.rentalPrice", 0] },
+                                status: "$items.itemStatus",
+                                date: "$createdAt",
+                                buyerName: {
+                                    $concat: [
+                                        { $ifNull: ["$buyer.firstName", ""] },
+                                        " ",
+                                        { $ifNull: ["$buyer.lastName", ""] },
+                                    ],
+                                },
+                            },
+                        },
+                    ],
+                },
+            },
+        ]);
+
+        const orders = result?.data || [];
+        const totalRecords = result?.metadata?.[0]?.totalRecords || 0;
+        const totalPages = Math.ceil(totalRecords / limit);
+        const hasMore = page < totalPages;
+
+        return {
+            orders,
+            meta: { totalRecords, totalPages, currentPage: page, limit, hasMore },
+        };
+    } catch (error) {
+        throw error;
+    }
+};
+
+// ─── Service 3: Single Order Item Detail for Seller ───
+export const getSellerOrderItemDetailService = async (
+    sellerUserId: string,
+    orderItemId: string
+) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(orderItemId)) {
+            throw new Error("Invalid order item ID");
+        }
+
+        const order = await Order.findOne(
+            { "items._id": new mongoose.Types.ObjectId(orderItemId) },
+            {
+                orderNumber: 1,
+                userId: 1,
+                shippingAddress: 1,
+                billingAddress: 1,
+                payment: 1,
+                amount: 1,
+                orderStatus: 1,
+                createdAt: 1,
+                items: {
+                    $elemMatch: { _id: new mongoose.Types.ObjectId(orderItemId) },
+                },
+            }
+        )
+            .populate({
+                path: "userId",
+                select: "firstName lastName email phone",
+            })
+            .lean();
+
+        if (!order || !order.items || order.items.length === 0) {
+            throw new Error("Order item not found");
+        }
+
+        const orderItem = order.items[0] as any;
+
+        if (orderItem.sellerId?.toString() !== sellerUserId) {
+            throw new Error("Unauthorized: This order item does not belong to you");
+        }
+
+        const book = await Book.findById(orderItem.bookId).select(
+            "name author description coverImage images language edition isbn rentalPricePerDay rentalPricePerWeek rentalPricePerMonth purchasePrice securityDeposit quantity isActive isAvailable"
+        ).lean();
+
+        // Build payment summary specific to this book/item
+        const paymentSummary = {
+            rentalAmount: orderItem.rental?.rentalPrice || 0,
+            securityDeposit: orderItem.rental?.securityDeposit || 0,
+            quantity: orderItem.quantity || 1,
+            subtotal: (orderItem.rental?.rentalPrice || 0) * (orderItem.quantity || 1),
+            depositTotal: (orderItem.rental?.securityDeposit || 0) * (orderItem.quantity || 1),
+            deliveryFee: order.amount?.deliveryFee || 0,
+            discount: order.amount?.discount || 0,
+            tax: order.amount?.tax || 0,
+            totalAmount: order.amount?.totalAmount || 0,
+            refundAmount: order.amount?.refundAmount || 0,
+            depositStatus: orderItem.deposit?.status || "pending",
+            depositRefundedAmount: orderItem.deposit?.refundedAmount || 0,
+            depositDeductionAmount: orderItem.deposit?.deductionAmount || 0,
+        };
+
+        const timeline = {
+            orderCreated: order.createdAt,
+            rentStartDate: orderItem.rental?.rentStartDate || null,
+            expectedReturnDate: orderItem.rental?.expectedReturnDate || null,
+            actualReturnDate: orderItem.rental?.actualReturnDate || null,
+            shippedDate: null, // Populate after discussing
+            deliveredDate: null, // Populate after discussing
+            returnDate: orderItem.rental?.actualReturnDate || null,
+        };
+
+        const buyer: any = order.userId || {};
+        const buyerInfo = {
+            _id: buyer._id,
+            firstName: buyer.firstName || "",
+            lastName: buyer.lastName || "",
+            email: buyer.email || "",
+            phone: buyer.phone || "",
+            shippingAddress: order.shippingAddress || null,
+            billingAddress: order.billingAddress || null,
+        };
+
+        return {
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            orderStatus: order.orderStatus,
+            book: book || null,
+            rental: {
+                rentalDuration: orderItem.rental?.rentalDuration || 0,
+                rentStartDate: orderItem.rental?.rentStartDate || null,
+                expectedReturnDate: orderItem.rental?.expectedReturnDate || null,
+                actualReturnDate: orderItem.rental?.actualReturnDate || null,
+                extensionCount: orderItem.rental?.extensionCount || 0,
+                lateFee: orderItem.rental?.lateFee || 0,
+            },
+            itemStatus: orderItem.itemStatus,
+            quantity: orderItem.quantity,
+            buyer: buyerInfo,
+            timeline,
+            paymentSummary,
+        };
+    } catch (error) {
+        throw error;
+    }
+};
+
+export const updateSellerOrderItemStatusService = async (
+    sellerUserId: string,
+    orderItemId: string,
+    action: "approve" | "reject"
+) => {
+    if (!mongoose.Types.ObjectId.isValid(orderItemId)) {
+        throw new Error("Invalid order item ID");
+    }
+
+    const order = await Order.findOne(
+        { "items._id": new mongoose.Types.ObjectId(orderItemId) }
+    );
+
+    if (!order) {
+        throw new Error(Messages.Seller_Order_Item_Not_Found);
+    }
+
+    // Find the specific item
+    const orderItem = order.items.find(
+        (item) => item._id && item._id.toString() === orderItemId
+    );
+
+    if (!orderItem) {
+        throw new Error(Messages.Seller_Order_Item_Not_Found);
+    }
+
+    // Verify seller owns this item
+    if (orderItem.sellerId.toString() !== sellerUserId) {
+        throw new Error("Unauthorized: This order item does not belong to you");
+    }
+
+    // Only allow approve/reject for items in "pending" status
+    if (orderItem.itemStatus !== ItemStatus.PENDING) {
+        throw new Error(Messages.Order_Item_Already_Processed);
+    }
+
+    // Update the item status
+    orderItem.itemStatus = action === "approve" ? ItemStatus.CONFIRMED : ItemStatus.REJECTED;
+
+    await order.save();
+
+    // Determine if all items in the order are now confirmed
+    const allItems = order.items;
+    const allConfirmedOrRejected = allItems.every(
+        (item) => item.itemStatus === ItemStatus.CONFIRMED || item.itemStatus === ItemStatus.REJECTED
+    );
+
+    // If all items are processed, update overall order status
+    if (allConfirmedOrRejected) {
+        const anyRejected = allItems.some((item) => item.itemStatus === ItemStatus.REJECTED);
+        const anyConfirmed = allItems.some((item) => item.itemStatus === ItemStatus.CONFIRMED);
+
+        if (anyConfirmed && anyRejected) {
+            // Mixed status - order is partially processed
+            order.orderStatus = OrderStatus.CONFIRMED;
+        } else if (allItems.every((item) => item.itemStatus === ItemStatus.REJECTED)) {
+            // All items rejected
+            order.orderStatus = OrderStatus.CANCELLED;
+        } else {
+            // All items confirmed
+            order.orderStatus = OrderStatus.CONFIRMED;
+        }
+
+        await order.save();
+    }
+
+    return {
+        orderItemId,
+        itemStatus: orderItem.itemStatus,
+        orderStatus: order.orderStatus,
+    };
 };
 
 export const getOrderBookDetailsService = async (orderId: string, bookId: string) => {
