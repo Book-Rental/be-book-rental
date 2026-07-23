@@ -120,7 +120,14 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             return;
         }
 
-        const paymentMethods = ["COD", "UPI", "CARD", "NET_BANKING"];
+        const paymentMethods = [
+            "COD",
+            "UPI",
+            "CARD",
+            "NET_BANKING",
+            "GOOGLE_PAY",
+            "PHONE_PE"
+        ];
 
         if (!payment.paymentMethod) {
             failResponse(res, "Payment Method is required.", StatusCode.Bad_Request);
@@ -352,11 +359,11 @@ export const updateSellerOrderItemStatus = async (req: Request, res: Response): 
         }
 
         const result = await updateSellerOrderItemStatusService(sellerUserId, orderItemId, action);
-        
-        const message = action === "approve" 
-            ? Messages.Seller_Order_Item_Approved 
+
+        const message = action === "approve"
+            ? Messages.Seller_Order_Item_Approved
             : Messages.Seller_Order_Item_Rejected;
-        
+
         successResponse(res, result, message, StatusCode.OK);
     } catch (error: any) {
         failResponse(
