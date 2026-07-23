@@ -124,12 +124,12 @@ export enum PaymentStatus {
 
 export enum PaymentMethod {
     COD = "COD",
-    CASH = "CASH", 
+    CASH = "CASH",
     UPI = "UPI",
     CARD = "CARD",
     NET_BANKING = "NET_BANKING",
     GOOGLE_PAY = "GOOGLE_PAY",
-    PHONE_PE = "PHONE_PE",    
+    PHONE_PE = "PHONE_PE",
 }
 export const PaymentSchema = new Schema(
     {
@@ -147,8 +147,12 @@ export const PaymentSchema = new Schema(
 
         transactionId: {
             type: String,
-            required: true,
             trim: true,
+          
+            required: function (this: any) {
+                return this.paymentMethod !== "COD" && this.paymentMethod !== "CASH";
+            },
+            default: null,
         },
 
         paidAt: {

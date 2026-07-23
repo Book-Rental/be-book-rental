@@ -139,11 +139,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             return;
         }
 
-        if (!payment.transactionId) {
-            failResponse(res, "Transaction Id is required.", StatusCode.Bad_Request);
-            return;
-        }
-
+        
         // ================= Amount Validation =================
 
         if (!amount) {
