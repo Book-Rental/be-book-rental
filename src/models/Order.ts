@@ -129,7 +129,7 @@ export enum PaymentMethod {
     CARD = "CARD",
     NET_BANKING = "NET_BANKING",
     GOOGLE_PAY = "GOOGLE_PAY",
-    PHONE_PE = "PHONE_PE",     // Matches 'phonepay' widget selection
+    PHONE_PE = "PHONE_PE",    
 }
 export const PaymentSchema = new Schema(
     {
