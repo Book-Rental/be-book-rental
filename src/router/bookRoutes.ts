@@ -8,6 +8,7 @@ import {
     updateBookById,
 } from "../controllers/bookController";
 import upload from "../utils/upload";
+import { auth } from "../middlewares/authMiddleware";
 
 const router = Router();
 const cpUpload = upload.fields([
@@ -16,10 +17,10 @@ const cpUpload = upload.fields([
 ]);
 
 router.get("/", getAllBooks);
-router.post("/create", cpUpload, createBook);
+router.post("/create",auth as any, cpUpload ,createBook);
 router.get("/:id", getBookById);
-router.get("/seller/:sellerId", getBooksBySellerId);
-router.delete("/:id", deleteBookById);
-router.put("/update/:id", cpUpload, updateBookById);
+router.get("/seller/:sellerId",auth as any, getBooksBySellerId);
+router.delete("/:id",auth as any, deleteBookById);
+router.put("/update/:id",auth as any, cpUpload, updateBookById);
 
 export default router;

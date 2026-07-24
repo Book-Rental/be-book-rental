@@ -23,13 +23,14 @@ router.put("/:id", upload.single("profilePic"), auth as any, updateUser);
 
 router.get("/:id", auth as any, getUserById);
 
-router.post("/addAddress/:userId", addUserAddress);
+router.post("/addAddress/:userId",auth as any, addUserAddress);
 
-router.get("/addresses/:userId", getUserAddresses);
+router.get("/addresses/:userId", auth as any,getUserAddresses);
 
-router.get("/addresses/:userId/:addressId", getAddressById);
+router.get("/addresses/:userId/:addressId",auth as any, getAddressById);
 
-router.put("/updateAddress/:userId/:addressId", updateUserAddress);
+router.put("/updateAddress/:userId/:addressId",auth as any, updateUserAddress);
 
-router.delete("/deleteAddress/:userId/:addressId", deleteUserAddress);
+router.delete("/deleteAddress/:userId/:addressId", auth as any ,deleteUserAddress);
+
 export default router;
