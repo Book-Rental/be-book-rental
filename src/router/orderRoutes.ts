@@ -16,12 +16,12 @@ import { auth } from "../middlewares/authMiddleware";
 
 const route = Router();
 
-route.get("/", getAllOrders);
-route.get("/:orderId", getOrderById);
-route.get("/getByUserId/:userId", getOrderByUserId);
-route.get("/:orderId/book/:bookId", getOrderBookDetails);
-route.post("/craete", createOrder);
-route.delete("/:orderId", deleteOrderById);
+route.get("/",auth as any, getAllOrders);
+route.get("/:orderId", auth as any,getOrderById);
+route.get("/getByUserId/:userId",auth as any, getOrderByUserId);
+route.get("/:orderId/book/:bookId",auth as any, getOrderBookDetails);
+route.post("/craete", auth as any,createOrder);
+route.delete("/:orderId",auth as any, deleteOrderById);
 route.get("/seller/dashboard", auth as any, getSellerDashboard);
 route.get("/seller/orders", auth as any, getSellerOrders);
 route.get("/seller/recent-orders", auth as any, getSellerRecentOrders);

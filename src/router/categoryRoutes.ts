@@ -16,9 +16,9 @@ const router = Router();
 // Define routes
 router.get("/", getAllCategories);
 router.get("/:id", getCategoryById);
-router.post("/create", createCategory);
-router.put("/:id", updateCategory);
-router.delete("/:id", deleteCategory);
-router.delete("/", deleteAllCategories);
+router.post("/create",auth as any, createCategory);
+router.put("/:id",auth as any, updateCategory);
+router.delete("/:id",auth as any, deleteCategory);
+router.delete("/",auth as any, deleteAllCategories);
 
 export default router;
