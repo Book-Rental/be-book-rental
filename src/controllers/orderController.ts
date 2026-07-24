@@ -10,6 +10,7 @@ import {
     getSellerDashboardService,
     getSellerOrderItemDetailService,
     getSellerRecentOrdersService,
+    updateOrderByIdService,
     updateSellerOrderItemStatusService,
 } from "../services/orderService";
 import { Messages } from "../utils/constants";
@@ -139,7 +140,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             return;
         }
 
-        
+
         // ================= Amount Validation =================
 
         if (!amount) {
@@ -399,6 +400,42 @@ export const getSellerOrderItemDetail = async (req: Request, res: Response): Pro
             res,
             error.message || Messages.Internal_Server_Error,
             StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+
+
+//Update Order 
+
+export const updateOrderById = async (req: Request, res: Response) => {
+    try {
+        const orderId = req.params.orderID as string;
+        const updateData = req.body;
+
+        if (!orderId) {
+            failResponse(res, "Order ID is required.", StatusCode.Bad_Request);
+            return;
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            failResponse(res, "Invalid orderId.", StatusCode.Bad_Request);
+            return;
+        }
+
+        if (!updateData || Object.keys(updateData).length === 0) {
+            failResponse(res, "Update data is required.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const order = await updateOrderByIdService(orderId, updateData);
+
+        successResponse(res, order, "Order updated successfully.",StatusCode.OK);
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
+            error.statusCode || StatusCode.Internal_Server_Error
         );
     }
 };

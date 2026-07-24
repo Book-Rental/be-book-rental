@@ -148,7 +148,7 @@ export const PaymentSchema = new Schema(
         transactionId: {
             type: String,
             trim: true,
-          
+
             required: function (this: any) {
                 return this.paymentMethod !== "COD" && this.paymentMethod !== "CASH";
             },
