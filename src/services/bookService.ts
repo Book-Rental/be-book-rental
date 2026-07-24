@@ -47,12 +47,12 @@ export const updateBookByIdService = async (id: string, data: Partial<IBook>) =>
 export const getBooksBySellerIdService = async (sellerId: string, query: any) => {
     try {
         const { skip, limit, page } = buildPaginationQuery(query);
-        const totalRecords = await Book.countDocuments({ sellerId });
-
+        const totalRecords = await Book.countDocuments({ sellerId }).populate('categoryId', 'name').skip(skip)
+            .limit(limit)
         const totalPages = Math.ceil(totalRecords / limit);
 
         const hasMore = page < totalPages;
-        const books = await Book.find({ sellerId }).skip(skip).limit(limit);
+        const books = await Book.find({ sellerId }).populate('categoryId', 'name').skip(skip).limit(limit)
 
         return {
             books,

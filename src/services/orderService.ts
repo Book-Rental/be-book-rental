@@ -1,10 +1,12 @@
 import mongoose from "mongoose";
 import Book from "../models/Book";
-import Order, { OrderStatus, PaymentStatus, ItemStatus } from "../models/Order";
+import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus } from "../models/Order";
 import { IOrder } from "../models/orderInteface";
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
 import { Messages } from "../utils/constants";
+import { StatusCode } from "../utils/StatusCodes";
+import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStatusFromItems, validateAndResolveItems, validateOrderStatusTransition, validatePaymentStatusTransition } from "../utils/updateOrderFunction";
 
 //getAll Order
 export const getAllOrdersService = async (query: {
@@ -92,7 +94,7 @@ export const getOrderByOrderIdService = async (orderId: string) => {
     try {
         const order = await Order.findById(orderId).populate({
             path: "items.bookId",
-            select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit",
+            select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit ",
         });
 
         if (!order) {
@@ -254,6 +256,13 @@ export const createOrderService = async (orderData: any) => {
 
         const orderNumber = `ORD${Date.now()}`;
 
+        // ================= Conditional COD Payment Status =================
+        // Checks if payment method is COD (case-insensitive)
+        const isCOD = payment.paymentMethod?.toUpperCase() === "COD";
+
+        const paymentStatus = isCOD ? PaymentStatus.PENDING : PaymentStatus.SUCCESS;
+        const paidAt = isCOD ? null : new Date();
+
         // ================= Create Order =================
 
         const order = await Order.create({
@@ -269,9 +278,9 @@ export const createOrderService = async (orderData: any) => {
 
             payment: {
                 paymentMethod: payment.paymentMethod,
-                paymentStatus: PaymentStatus.SUCCESS,
-                transactionId: payment.transactionId,
-                paidAt: new Date(),
+                paymentStatus: paymentStatus,
+                transactionId: isCOD ? null : payment.transactionId,
+                paidAt: paidAt,
             },
 
             amount: {
@@ -367,8 +376,8 @@ export const getOrderByUserIdService = async (userId: string, query: any = {}) =
                     item.rental.rentalDuration === 1
                         ? "day"
                         : item.rental.rentalDuration === 7
-                          ? "week"
-                          : "month",
+                            ? "week"
+                            : "month",
 
                 rentalPrice: item.rental.rentalPrice,
 
@@ -599,7 +608,7 @@ export const getSellerRecentOrdersService = async (
             {
                 $facet: {
                     metadata: [{ $count: "totalRecords" }],
-                data: [
+                    data: [
                         { $skip: skip },
                         { $limit: limit },
                         {
@@ -1018,4 +1027,49 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
             refundedDate: orderItem.deposit.refundedDate,
         },
     };
+};
+
+
+/* =========================================================
+ * Main service — orchestration only
+ * ========================================================= */
+
+export const updateOrderByIdService = async (orderId: string, updateData: any) => {
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+        const error: any = new Error("Order not found.");
+        error.statusCode = StatusCode.Not_Found;
+        throw error;
+    }
+
+    // 1. Validate all transitions up front (fail fast, before mutating anything)
+    validateOrderStatusTransition(order, updateData);
+    validatePaymentStatusTransition(order, updateData);
+    const resolvedItems = validateAndResolveItems(order, updateData);
+
+    // 2. Apply mutations
+    applyItemUpdates(resolvedItems);
+    applyTopLevelUpdates(order, updateData);
+
+    // 3. Derive final order status from item states
+    syncOrderStatusFromItems(order);
+
+    // 4 & 5. Persist order + sync book statuses together (transactional)
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+
+        await order.save({ session });
+        await syncBookStatuses(resolvedItems, session);
+
+        await session.commitTransaction();
+    } catch (err) {
+        await session.abortTransaction();
+        throw err;
+    } finally {
+        session.endSession();
+    }
+
+    return order;
 };
