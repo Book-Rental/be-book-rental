@@ -9,9 +9,14 @@ import { GUEST_COOKIE_NAME, JWT_TOKEN_NAME } from "../utils/constants";
  * Sets on the request:
  *   req.cartIdentity = { userId?, anonymousId? }
  *
- * If a valid Authorization cookie is present → userId is set (existing auth).
- * Else if a valid guest cookie is present → anonymousId is set.
- * Else → a new guest UUID is generated, a guest cookie is set, and anonymousId is set.
+ * Priority order:
+ * 1. Authorization cookie → userId (authenticated user)
+ * 2. X-Anonymous-Id header → anonymousId (from frontend localStorage)
+ * 3. Guest cookie → anonymousId (legacy/fallback)
+ * 4. Generate new guest UUID → anonymousId (new visitor)
+ *
+ * The X-Anonymous-Id header is used as the primary mechanism for guest
+ * identity to bypass third-party cookie blocking in modern browsers.
  */
 export interface CartIdentity {
     userId?: string;
@@ -27,6 +32,12 @@ declare module "express" {
 
 const GUEST_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 const isProd = process.env.NODE_ENV === "production";
+
+/**
+ * Simple UUID v4 validation regex.
+ */
+const UUID_REGEX =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const resolveCartIdentity = async (
     req: Request,
@@ -53,7 +64,24 @@ export const resolveCartIdentity = async (
             }
         }
 
-        // 2. Try guest cookie
+        // 2. Try X-Anonymous-Id header (primary guest mechanism — bypasses 3rd-party cookie blocking)
+        const headerAnonymousId = req.headers["x-anonymous-id"] as string | undefined;
+        if (headerAnonymousId && UUID_REGEX.test(headerAnonymousId)) {
+            // Set the guest cookie as well for backward compatibility (e.g. server-side rendering)
+            const guestToken = signGuestToken(headerAnonymousId);
+            res.cookie(GUEST_COOKIE_NAME, guestToken, {
+                httpOnly: true,
+                secure: isProd,
+                sameSite: isProd ? "none" : "lax",
+                maxAge: GUEST_MAX_AGE,
+            });
+
+            req.cartIdentity = { anonymousId: headerAnonymousId };
+            next();
+            return;
+        }
+
+        // 3. Try guest cookie (legacy/fallback)
         const guestToken = req.cookies?.[GUEST_COOKIE_NAME];
         if (guestToken) {
             const payload = verifyGuestToken(guestToken);
@@ -64,7 +92,7 @@ export const resolveCartIdentity = async (
             }
         }
 
-        // 3. No valid identity → generate new guest UUID
+        // 4. No valid identity → generate new guest UUID
         const anonymousId = randomUUID();
         const newGuestToken = signGuestToken(anonymousId);
 
