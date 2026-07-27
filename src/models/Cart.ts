@@ -58,23 +58,19 @@ const cartSchema = new Schema<ICart>(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: false,
-            sparse: true,
-            unique: true,
         },
         anonymousId: {
             type: String,
             required: false,
-            sparse: true,
-            unique: true,
         },
         items: [cartItemSchema],
     },
     { timestamps: true }
 );
 
-// Helpful when updating quantity/remove
-cartSchema.index({ userId: 1 });
-cartSchema.index({ anonymousId: 1 });
+// Helpful when updating quantity/remove — using sparse to avoid indexing null/undefined values. Please do not change
+cartSchema.index({ userId: 1 }, { sparse: true });
+cartSchema.index({ anonymousId: 1 }, { sparse: true });
 cartSchema.index({ userId: 1, "items.bookId": 1, "items.pricingMode": 1, "items.rentalPeriod": 1 });
 cartSchema.index({
     anonymousId: 1,
