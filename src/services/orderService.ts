@@ -1,81 +1,35 @@
 import mongoose from "mongoose";
 import Book from "../models/Book";
 import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus } from "../models/Order";
-import { IOrder } from "../models/orderInteface";
+
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
 import { Messages } from "../utils/constants";
 import { StatusCode } from "../utils/StatusCodes";
 import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStatusFromItems, validateAndResolveItems, validateOrderStatusTransition, validatePaymentStatusTransition } from "../utils/updateOrderFunction";
+import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilters";
 
 //getAll Order
-export const getAllOrdersService = async (query: {
-    userId?: string;
-    orderStatus?: string;
-    orderId?: string;
-    page?: number;
-    limit?: number;
-}) => {
+export const getAllOrdersService = async (query: OrderQuery) => {
     try {
         const { skip, limit, page } = buildPaginationQuery(query);
 
-        const { userId, orderStatus, orderId } = query;
+        // 1. Generate the pipeline architecture arrays
+        const pipeline = buildOrderPipeline(query, skip, limit);
 
-        const filter: any = {
-            isActive: true,
-        };
+        // 2. Query execution runtime
+        const [facetResult] = await Order.aggregate(pipeline);
 
-        if (userId) {
-            filter.userId = userId;
-        }
-
-        if (orderStatus) {
-            filter.orderStatus = orderStatus;
-        }
-
-        if (orderId) {
-            filter._id = orderId;
-        }
-
-        const totalRecords = await Order.countDocuments(filter);
-
-        const totalPages = Math.ceil(totalRecords / limit);
-
+        const rawOrders = facetResult?.data || [];
+        const totalRecords = facetResult?.totalCount?.[0]?.count || 0;
+        const totalPages = Math.ceil(totalRecords / limit) || 1;
         const hasMore = page < totalPages;
 
-        const orders = await Order.find(filter)
-            .populate({
-                path: "items.bookId",
-                select: "name author coverImage",
-            })
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
-
-        const formattedOrders = orders.map((order: any) => ({
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            orderDate: order.createdAt,
-            orderStatus: order.orderStatus,
-            paymentStatus: order.payment.paymentStatus,
-            totalAmount: order.amount.totalAmount,
-
-            items: order.items.map((item: any) => ({
-                bookId: item.bookId?._id,
-                bookName: item.bookId?.name,
-                author: item.bookId?.author,
-                coverImage: item.bookId?.coverImage,
-
-                quantity: item.quantity,
-                itemStatus: item.itemStatus,
-
-                rentalDuration: item.rental?.rentalDuration,
-            })),
-        }));
+        // // 3. Format and payload adjustments
+        const orders = formatOrderRecords(rawOrders);
 
         return {
-            orders: formattedOrders,
+            orders,
             meta: {
                 totalRecords,
                 totalPages,
