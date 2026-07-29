@@ -1,5 +1,5 @@
-import { Request, Response } from "express";
 import Book, { IBook } from "../models/Book";
+import Category from "../models/Category";
 import { buildPaginationQuery } from "../utils/appFunctions";
 
 export const createBookService = async (data: Partial<IBook>) => {
@@ -49,8 +49,31 @@ export const getBooksBySellerIdService = async (sellerId: string, query: any) =>
         const { skip, limit, page } = buildPaginationQuery(query);
 
         const filter: Record<string, any> = { sellerId };
+
         if (query.categoryId) {
             filter.categoryId = query.categoryId;
+        }
+
+        if (query.categoryName) {
+            const category = await Category.findOne({
+                name: { $regex: `^${query.categoryName}$`, $options: "i" },
+                isActive: true,
+            }).select("_id");
+
+            if (category) {
+                filter.categoryId = category._id;
+            } else {
+                return {
+                    books: [],
+                    meta: {
+                        totalRecords: 0,
+                        totalPages: 0,
+                        currentPage: page,
+                        limit,
+                        hasMore: false,
+                    },
+                };
+            }
         }
 
         const totalRecords = await Book.countDocuments(filter);
