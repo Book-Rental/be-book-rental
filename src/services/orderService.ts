@@ -1,81 +1,36 @@
 import mongoose from "mongoose";
 import Book from "../models/Book";
 import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus } from "../models/Order";
-import { IOrder } from "../models/orderInteface";
+
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
 import { Messages } from "../utils/constants";
 import { StatusCode } from "../utils/StatusCodes";
 import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStatusFromItems, validateAndResolveItems, validateOrderStatusTransition, validatePaymentStatusTransition } from "../utils/updateOrderFunction";
+import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilters";
+import { createShipmentFromOrder } from "../helper/shipmentHelper";
 
 //getAll Order
-export const getAllOrdersService = async (query: {
-    userId?: string;
-    orderStatus?: string;
-    orderId?: string;
-    page?: number;
-    limit?: number;
-}) => {
+export const getAllOrdersService = async (query: OrderQuery) => {
     try {
         const { skip, limit, page } = buildPaginationQuery(query);
 
-        const { userId, orderStatus, orderId } = query;
+        // 1. Generate the pipeline architecture arrays
+        const pipeline = buildOrderPipeline(query, skip, limit);
 
-        const filter: any = {
-            isActive: true,
-        };
+        // 2. Query execution runtime
+        const [facetResult] = await Order.aggregate(pipeline);
 
-        if (userId) {
-            filter.userId = userId;
-        }
-
-        if (orderStatus) {
-            filter.orderStatus = orderStatus;
-        }
-
-        if (orderId) {
-            filter._id = orderId;
-        }
-
-        const totalRecords = await Order.countDocuments(filter);
-
-        const totalPages = Math.ceil(totalRecords / limit);
-
+        const rawOrders = facetResult?.data || [];
+        const totalRecords = facetResult?.totalCount?.[0]?.count || 0;
+        const totalPages = Math.ceil(totalRecords / limit) || 1;
         const hasMore = page < totalPages;
 
-        const orders = await Order.find(filter)
-            .populate({
-                path: "items.bookId",
-                select: "name author coverImage",
-            })
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
-
-        const formattedOrders = orders.map((order: any) => ({
-            orderId: order._id,
-            orderNumber: order.orderNumber,
-            orderDate: order.createdAt,
-            orderStatus: order.orderStatus,
-            paymentStatus: order.payment.paymentStatus,
-            totalAmount: order.amount.totalAmount,
-
-            items: order.items.map((item: any) => ({
-                bookId: item.bookId?._id,
-                bookName: item.bookId?.name,
-                author: item.bookId?.author,
-                coverImage: item.bookId?.coverImage,
-
-                quantity: item.quantity,
-                itemStatus: item.itemStatus,
-
-                rentalDuration: item.rental?.rentalDuration,
-            })),
-        }));
+        // // 3. Format and payload adjustments
+        const orders = formatOrderRecords(rawOrders);
 
         return {
-            orders: formattedOrders,
+            orders,
             meta: {
                 totalRecords,
                 totalPages,
@@ -1033,8 +988,10 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
 /* =========================================================
  * Main service — orchestration only
  * ========================================================= */
-
-export const updateOrderByIdService = async (orderId: string, updateData: any) => {
+export const updateOrderByIdService = async (
+    orderId: string,
+    updateData: any
+) => {
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -1043,32 +1000,69 @@ export const updateOrderByIdService = async (orderId: string, updateData: any) =
         throw error;
     }
 
-    // 1. Validate all transitions up front (fail fast, before mutating anything)
+    // Store previous item statuses
+    const previousItemStatuses = new Map(
+        order.items.map((item: any) => [
+            item._id.toString(),
+            item.itemStatus,
+        ])
+    );
+
+    // Validate
     validateOrderStatusTransition(order, updateData);
     validatePaymentStatusTransition(order, updateData);
+
     const resolvedItems = validateAndResolveItems(order, updateData);
 
-    // 2. Apply mutations
+    // Apply Updates
     applyItemUpdates(resolvedItems);
     applyTopLevelUpdates(order, updateData);
 
-    // 3. Derive final order status from item states
+    // Sync Order Status
     syncOrderStatusFromItems(order);
 
-    // 4 & 5. Persist order + sync book statuses together (transactional)
     const session = await mongoose.startSession();
+
     try {
         session.startTransaction();
 
         await order.save({ session });
+
         await syncBookStatuses(resolvedItems, session);
 
         await session.commitTransaction();
-    } catch (err) {
+    } catch (error) {
         await session.abortTransaction();
-        throw err;
+        throw error;
     } finally {
-        session.endSession();
+        await session.endSession();
+    }
+
+    // Create Shipment AFTER transaction is committed
+    for (const item of order.items) {
+        const previousStatus = previousItemStatuses.get(item._id.toString());
+
+        // Shipment should be created only once when item becomes CONFIRMED
+        if (
+            previousStatus !== ItemStatus.CONFIRMED &&
+            item.itemStatus === ItemStatus.CONFIRMED
+        ) {
+            try {
+                await createShipmentFromOrder(order, item);
+
+                console.log(
+                    `Shipment created successfully for item ${item._id}`
+                );
+            } catch (error) {
+                console.error(
+                    `Failed to create shipment for item ${item._id}`,
+                    error
+                );
+
+                // Do not throw here because the order has already been updated.
+                // You can later retry shipment creation using a cron job or queue.
+            }
+        }
     }
 
     return order;

@@ -113,7 +113,12 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
     try {
-        res.clearCookie(`${JWT_TOKEN_NAME}`);
+        res.clearCookie(`${JWT_TOKEN_NAME}`, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            path: "/", 
+        });
         successResponse(res, "", Messages.Logout, StatusCode.OK);
     } catch (err) {
         failResponse(res, Messages.Something_went_Wrong, StatusCode.Not_Found);

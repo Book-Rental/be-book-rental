@@ -29,4 +29,5 @@ app.use((err: any, req: any, res: any, next: any) => {
     errorResponse(res, "Something went wrong!", 500, err);
 });
 
+
 export default app;
