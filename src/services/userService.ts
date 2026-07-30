@@ -40,7 +40,7 @@ export const getAllUsersService = async (query: {
         const totalPages = Math.ceil(totalRecords / limit);
         const hasMore = page < totalPages;
 
-        const selectedFields = `email userType lastName firstName status addresses password isVerified profilePic`;
+        const selectedFields = `email userType lastName firstName status addresses password isVerified profilePic isSeller`;
         const users = await User.find(searchFilter)
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -126,7 +126,7 @@ export const updateUserService = async (id: string, data: any) => {
 
 export const loginService = async (email: string) => {
     try {
-        const selectedFields = `email userType lastName firstName status addresses isVerified password favoriteProducts`;
+        const selectedFields = `email userType lastName firstName status addresses isVerified isSeller password favoriteProducts`;
         return await User.findOne({ email }, selectedFields).exec();
     } catch (err) {
         return err;
@@ -135,7 +135,7 @@ export const loginService = async (email: string) => {
 
 export const getUserByIdService = async (id: string) => {
     try {
-        const selectedFields = `email userType lastName firstName status addresses isVerified profilePic deliveryStatus maxConcurrentOrders currentOrderIds currentLocation`;
+        const selectedFields = `email userType lastName firstName status addresses isVerified isSeller profilePic deliveryStatus maxConcurrentOrders currentOrderIds currentLocation`;
         const user = await User.findOne({ _id: id }, selectedFields);
 
         return user;

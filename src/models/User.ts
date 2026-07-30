@@ -102,6 +102,11 @@ export const addressSchema = new Schema(
             type: Boolean,
             default: false,
         },
+
+        isSellerAddress: {
+            type: Boolean,
+            default: false,
+        },
     },
     {
         _id: true,
@@ -156,6 +161,11 @@ const userSchema = new Schema<IUser>(
         },
 
         isVerified: {
+            type: Boolean,
+            default: false,
+        },
+
+        isSeller: {
             type: Boolean,
             default: false,
         },
