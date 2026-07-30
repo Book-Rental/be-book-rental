@@ -8,6 +8,7 @@ import { Messages } from "../utils/constants";
 import { StatusCode } from "../utils/StatusCodes";
 import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStatusFromItems, validateAndResolveItems, validateOrderStatusTransition, validatePaymentStatusTransition } from "../utils/updateOrderFunction";
 import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilters";
+import { createShipmentFromOrder } from "../helper/shipmentHelper";
 
 //getAll Order
 export const getAllOrdersService = async (query: OrderQuery) => {
@@ -987,8 +988,10 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
 /* =========================================================
  * Main service — orchestration only
  * ========================================================= */
-
-export const updateOrderByIdService = async (orderId: string, updateData: any) => {
+export const updateOrderByIdService = async (
+    orderId: string,
+    updateData: any
+) => {
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -997,32 +1000,69 @@ export const updateOrderByIdService = async (orderId: string, updateData: any) =
         throw error;
     }
 
-    // 1. Validate all transitions up front (fail fast, before mutating anything)
+    // Store previous item statuses
+    const previousItemStatuses = new Map(
+        order.items.map((item: any) => [
+            item._id.toString(),
+            item.itemStatus,
+        ])
+    );
+
+    // Validate
     validateOrderStatusTransition(order, updateData);
     validatePaymentStatusTransition(order, updateData);
+
     const resolvedItems = validateAndResolveItems(order, updateData);
 
-    // 2. Apply mutations
+    // Apply Updates
     applyItemUpdates(resolvedItems);
     applyTopLevelUpdates(order, updateData);
 
-    // 3. Derive final order status from item states
+    // Sync Order Status
     syncOrderStatusFromItems(order);
 
-    // 4 & 5. Persist order + sync book statuses together (transactional)
     const session = await mongoose.startSession();
+
     try {
         session.startTransaction();
 
         await order.save({ session });
+
         await syncBookStatuses(resolvedItems, session);
 
         await session.commitTransaction();
-    } catch (err) {
+    } catch (error) {
         await session.abortTransaction();
-        throw err;
+        throw error;
     } finally {
-        session.endSession();
+        await session.endSession();
+    }
+
+    // Create Shipment AFTER transaction is committed
+    for (const item of order.items) {
+        const previousStatus = previousItemStatuses.get(item._id.toString());
+
+        // Shipment should be created only once when item becomes CONFIRMED
+        if (
+            previousStatus !== ItemStatus.CONFIRMED &&
+            item.itemStatus === ItemStatus.CONFIRMED
+        ) {
+            try {
+                await createShipmentFromOrder(order, item);
+
+                console.log(
+                    `Shipment created successfully for item ${item._id}`
+                );
+            } catch (error) {
+                console.error(
+                    `Failed to create shipment for item ${item._id}`,
+                    error
+                );
+
+                // Do not throw here because the order has already been updated.
+                // You can later retry shipment creation using a cron job or queue.
+            }
+        }
     }
 
     return order;
