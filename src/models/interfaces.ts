@@ -32,6 +32,7 @@ export interface IUserAddress {
     };
 
     isDefault?: boolean;
+    isSellerAddress?: boolean;
 }
 
 export enum UserType {
@@ -53,6 +54,7 @@ export interface IUser extends IBasicFields {
     userType: UserType;
     profilePic?: string;
     isVerified: boolean;
+    isSeller?: boolean;
     verificationToken?: string | null;
     tokenCreatedAt?: Date;
     hashedToken?: string | null;
