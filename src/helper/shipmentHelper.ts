@@ -1,12 +1,14 @@
 import axios from "axios";
 import User from "../models/User";
 import Book from "../models/Book";
-import { IOrder } from "../models/orderInteface";
 import { PaymentMethod } from "../utils/constants";
+import { IUserAddress } from "../models/interfaces";
+
 export enum PaymentMode {
     PREPAID = "Prepaid",
     COD = "COD",
 }
+
 export const createShipmentFromOrder = async (
     order: any,
     item: any
@@ -31,11 +33,21 @@ export const createShipmentFromOrder = async (
     if (!book) {
         throw new Error("Book not found.");
     }
-    const defaultAddress =
-        seller.addresses.find((address: any) => address.isDefault) ??
+
+    // Seller Address
+    const sellerAddress =
+        seller.addresses.find(
+            (address: IUserAddress) => address.isSellerAddress
+        ) ??
+        seller.addresses.find(
+            (address: IUserAddress) => address.isDefault
+        ) ??
         seller.addresses[0];
 
-    console.log('dataaaaaaa', seller, buyer, book)
+    if (!sellerAddress) {
+        throw new Error("Seller address not found.");
+    }
+
     const shipmentPayload = {
         orderId: order._id,
 
@@ -47,17 +59,21 @@ export const createShipmentFromOrder = async (
 
         buyerId: order.userId,
 
-        // Static Seller Address (Temporary)
         sender: {
-            name: "Test Seller",
-            phone: "9876543210",
-            email: "seller@test.com",
+            name: seller.firstName,
+            phone: sellerAddress.phone,
+            email: seller.email,
 
-            addressLine1: "Madhapur, Hitech City",
-            city: "Hyderabad",
-            state: "Telangana",
-            pincode: "500042",
-            country: "India",
+            addressLine1: sellerAddress.street,
+            city: sellerAddress.city,
+            state: sellerAddress.state,
+            pincode: sellerAddress.zipCode,
+            country: sellerAddress.country,
+
+            location: {
+                type: sellerAddress.location.type,
+                coordinates: sellerAddress.location.coordinates,
+            },
         },
 
         receiver: {
@@ -67,27 +83,32 @@ export const createShipmentFromOrder = async (
             addressLine1: order.shippingAddress.street,
             city: order.shippingAddress.city,
             state: order.shippingAddress.state,
-            pincode: "560001",
+            pincode: order.shippingAddress.zipCode,
             country: order.shippingAddress.country,
+
+            location: {
+                type: order.shippingAddress.location.type,
+                coordinates: order.shippingAddress.location.coordinates,
+            },
         },
 
         paymentMode:
             order.payment.paymentMethod === PaymentMethod.COD
                 ? PaymentMode.COD
                 : PaymentMode.PREPAID,
+
         codAmount:
             order.payment.paymentMethod === PaymentMethod.COD
                 ? order.amount.totalAmount
                 : 0,
 
         expectedDeliveryDate: new Date("2026-08-06T00:00:00.000Z"),
-        createdBy: order.userId.toString(),
 
+        createdBy: order.userId.toString(),
     };
 
     await axios.post(
         `${process.env.LOGISTICS_SERVICE_URL}/api/shipment/create`,
         shipmentPayload
     );
-
 };
