@@ -800,9 +800,9 @@ export const updateSellerOrderItemStatusService = async (
         throw new Error("Invalid order item ID");
     }
 
-    const order = await Order.findOne(
-        { "items._id": new mongoose.Types.ObjectId(orderItemId) }
-    );
+    const order = await Order.findOne({
+        "items._id": new mongoose.Types.ObjectId(orderItemId),
+    });
 
     if (!order) {
         throw new Error(Messages.Seller_Order_Item_Not_Found);
@@ -822,35 +822,51 @@ export const updateSellerOrderItemStatusService = async (
         throw new Error("Unauthorized: This order item does not belong to you");
     }
 
-    // Only allow approve/reject for items in "pending" status
+    // Only allow approve/reject for pending items
     if (orderItem.itemStatus !== ItemStatus.PENDING) {
         throw new Error(Messages.Order_Item_Already_Processed);
     }
 
-    // Update the item status
-    orderItem.itemStatus = action === "approve" ? ItemStatus.CONFIRMED : ItemStatus.REJECTED;
+    // Update item status
+    orderItem.itemStatus =
+        action === "approve"
+            ? ItemStatus.CONFIRMED
+            : ItemStatus.REJECTED;
 
     await order.save();
 
-    // Determine if all items in the order are now confirmed
+    // ✅ Create Shipment only when seller approves
+    if (action === "approve") {
+        await createShipmentFromOrder(order, orderItem);
+    }
+
+    // Determine if all items are processed
     const allItems = order.items;
+
     const allConfirmedOrRejected = allItems.every(
-        (item) => item.itemStatus === ItemStatus.CONFIRMED || item.itemStatus === ItemStatus.REJECTED
+        (item) =>
+            item.itemStatus === ItemStatus.CONFIRMED ||
+            item.itemStatus === ItemStatus.REJECTED
     );
 
-    // If all items are processed, update overall order status
     if (allConfirmedOrRejected) {
-        const anyRejected = allItems.some((item) => item.itemStatus === ItemStatus.REJECTED);
-        const anyConfirmed = allItems.some((item) => item.itemStatus === ItemStatus.CONFIRMED);
+        const anyRejected = allItems.some(
+            (item) => item.itemStatus === ItemStatus.REJECTED
+        );
+
+        const anyConfirmed = allItems.some(
+            (item) => item.itemStatus === ItemStatus.CONFIRMED
+        );
 
         if (anyConfirmed && anyRejected) {
-            // Mixed status - order is partially processed
             order.orderStatus = OrderStatus.CONFIRMED;
-        } else if (allItems.every((item) => item.itemStatus === ItemStatus.REJECTED)) {
-            // All items rejected
+        } else if (
+            allItems.every(
+                (item) => item.itemStatus === ItemStatus.REJECTED
+            )
+        ) {
             order.orderStatus = OrderStatus.CANCELLED;
         } else {
-            // All items confirmed
             order.orderStatus = OrderStatus.CONFIRMED;
         }
 
