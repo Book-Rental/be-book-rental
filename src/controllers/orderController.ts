@@ -4,6 +4,7 @@ import {
     deleteOrderByIdService,
     getAllOrdersService,
     getOrderBookDetailsService,
+    getOrderByItemIdService,
     getOrderByOrderIdService,
     getOrderByUserIdService,
     getSellerAllOrdersService,
@@ -430,7 +431,7 @@ export const updateOrderById = async (req: Request, res: Response) => {
 
         const order = await updateOrderByIdService(orderId, updateData);
 
-        successResponse(res, order, "Order updated successfully.",StatusCode.OK);
+        successResponse(res, order, "Order updated successfully.", StatusCode.OK);
     } catch (error: any) {
         failResponse(
             res,
@@ -439,3 +440,31 @@ export const updateOrderById = async (req: Request, res: Response) => {
         );
     }
 };
+
+
+export const getOrderByItemId = async (req: Request, res: Response) => {
+    try {
+        const orderId = req.params.orderId as string;
+
+        const ItemId = req.params.ItemId as string;
+
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            failResponse(res, "Invalid orderId.", StatusCode.Bad_Request);
+            return;
+        }
+        if (!mongoose.Types.ObjectId.isValid(ItemId)) {
+            failResponse(res, "Invalid ItemId.", StatusCode.Bad_Request);
+            return;
+        }
+
+        const order = await getOrderByItemIdService(orderId, ItemId)
+
+        successResponse(res, order, Messages.Order_Fetch_success, StatusCode.OK)
+    } catch (error: any) {
+        failResponse(
+            res,
+            error.message || Messages.Internal_Server_Error,
+            error.statusCode || StatusCode.Internal_Server_Error
+        );
+    }
+}
