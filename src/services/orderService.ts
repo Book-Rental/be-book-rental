@@ -1067,3 +1067,60 @@ export const updateOrderByIdService = async (
 
     return order;
 };
+
+export const getOrderByItemIdService = async (
+    orderId: string,
+    itemId: string
+) => {
+    try {
+        // Validate IDs
+        if (
+            !mongoose.Types.ObjectId.isValid(orderId) ||
+            !mongoose.Types.ObjectId.isValid(itemId)
+        ) {
+            throw new Error("Invalid Order ID or Item ID.");
+        }
+
+        // Fetch Order
+        const order: any = await Order.findOne({
+            _id: orderId,
+            isActive: true,
+        })
+            .populate({
+                path: "items.bookId",
+                select: "name author coverImage ",
+            })
+            .lean();
+        console.log('order', order)
+        if (!order) {
+            throw new Error("Order not found.");
+        }
+
+        // Find the requested order item
+        const specificItem = order.items.find(
+            (item: any) => String(item._id) === String(itemId)
+        );
+        console.log(specificItem)
+        if (!specificItem) {
+            throw new Error("Order item not found.");
+        }
+
+        return {
+            orderId: order._id,
+            orderItem: {
+                orderItemId: specificItem._id,
+                bookId: specificItem.bookId?._id,
+                bookName:
+                    specificItem.bookId.name,
+                author:
+                    specificItem.bookId.author,
+                coverImage:
+                    specificItem.bookId.coverImage,
+                quantity: specificItem.quantity,
+                itemStatus: specificItem.itemStatus,
+            }
+        };
+    } catch (error) {
+        throw error;
+    }
+};
