@@ -218,6 +218,7 @@ export enum ItemStatus {
     PENDING = "pending",
     CONFIRMED = "confirmed",
     SHIPPED = "shipped",
+    OUT_FOR_DELIVERY = "out_for_delivery",
     DELIVERED = "delivered",
     RETURN_REQUESTED = "return_requested",
     RETURNED = "returned",
@@ -271,6 +272,7 @@ export enum OrderStatus {
     CONFIRMED = "confirmed",
     SHIPPED = "shipped",
     DELIVERED = "delivered",
+   
     RETURN_REQUESTED = "return_requested",
     RETURNED = "returned",
     CANCELLED = "cancelled",
