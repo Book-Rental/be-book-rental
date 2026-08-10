@@ -9,6 +9,8 @@ import { StatusCode } from "../utils/StatusCodes";
 import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStatusFromItems, validateAndResolveItems, validateOrderStatusTransition, validatePaymentStatusTransition } from "../utils/updateOrderFunction";
 import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilters";
 import { createShipmentFromOrder } from "../helper/shipmentHelper";
+import { sendEmail } from "./email.service";
+const { compileTemplate } = require("../templates/template");
 
 //getAll Order
 export const getAllOrdersService = async (query: OrderQuery) => {
@@ -257,12 +259,66 @@ export const createOrderService = async (orderData: any) => {
             isActive: true,
         });
 
-        // ================= Return Order =================
+        // ================= Get Created Order =================
 
-        return await Order.findById(order._id)
+        const createdOrder: any = await Order.findById(order._id)
             .populate("items.bookId", "name author publisher language isbn edition coverImage")
             .populate("items.sellerId", "firstName lastName")
             .populate("userId", "firstName lastName email phone");
+
+        if (!createdOrder) {
+            throw new Error("Order created but could not be retrieved.");
+        }
+
+        // ================= Send Order Email =================
+
+        // ================= Send Order Email =================
+
+        const createdUser: any = createdOrder.userId;
+
+        if (createdUser?.email) {
+            try {
+                const orderId = createdOrder._id.toString();
+
+                const bookId = createdOrder.items?.[0]?.bookId?._id
+                    ? createdOrder.items[0].bookId._id.toString()
+                    : createdOrder.items?.[0]?.bookId?.toString();
+
+                const trackingUrl = `https://fe-book-rental-host.onrender.com/order-details?orderId=${orderId}&bookId=${bookId}`;
+
+                const html = compileTemplate("orderConfirmationEmail.hbs", {
+                    title: "Order Confirmation",
+                    orderNumber: createdOrder.orderNumber,
+                    orderId,
+                    trackingUrl,
+                    year: new Date().getFullYear(),
+                });
+
+                await sendEmail(
+                    [
+                        {
+                            Email: user.email,
+                            Name: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+                        },
+                    ],
+                    "Order Confirmation",
+                    html
+                );
+
+                console.log(
+                    `Order confirmation email sent to ${createdUser.email}`
+                );
+            } catch (emailError) {
+                console.error(
+                    "Order created successfully, but email sending failed:",
+                    emailError
+                );
+            }
+        }
+
+        // ================= Return Order =================
+
+        return createdOrder;
     } catch (error) {
         throw error;
     }
