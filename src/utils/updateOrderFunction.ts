@@ -11,57 +11,163 @@ export enum BookStatus {
 }
 
 /* =========================================================
- * Transition maps (module-level — built once, not per call)
+ * Order Status Transitions
  * ========================================================= */
 
 export const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
-    [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-    [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-    [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
-    [OrderStatus.DELIVERED]: [OrderStatus.RETURN_REQUESTED],
-    [OrderStatus.RETURN_REQUESTED]: [OrderStatus.RETURNED],
+    [OrderStatus.PENDING]: [
+        OrderStatus.CONFIRMED,
+        OrderStatus.CANCELLED,
+    ],
+
+    [OrderStatus.CONFIRMED]: [
+        OrderStatus.SHIPPED,
+        OrderStatus.CANCELLED,
+    ],
+
+    [OrderStatus.SHIPPED]: [
+        OrderStatus.OUT_FOR_DELIVERY,
+    ],
+
+    [OrderStatus.OUT_FOR_DELIVERY]: [
+        OrderStatus.DELIVERED,
+    ],
+
+    [OrderStatus.DELIVERED]: [
+        OrderStatus.RETURN_REQUESTED,
+    ],
+
+    [OrderStatus.RETURN_REQUESTED]: [
+        OrderStatus.RETURNED,
+    ],
+
     [OrderStatus.RETURNED]: [],
+
     [OrderStatus.CANCELLED]: [],
 };
 
+/* =========================================================
+ * Payment Status Transitions
+ * ========================================================= */
+
 export const PAYMENT_STATUS_TRANSITIONS: Record<string, string[]> = {
-    [PaymentStatus.PENDING]: [PaymentStatus.SUCCESS, PaymentStatus.FAILED],
-    [PaymentStatus.SUCCESS]: [PaymentStatus.REFUNDED],
+    [PaymentStatus.PENDING]: [
+        PaymentStatus.SUCCESS,
+        PaymentStatus.FAILED,
+    ],
+
+    [PaymentStatus.SUCCESS]: [
+        PaymentStatus.REFUNDED,
+    ],
+
     [PaymentStatus.FAILED]: [],
+
     [PaymentStatus.REFUNDED]: [],
 };
 
+/* =========================================================
+ * Item Status Transitions
+ * ========================================================= */
+
 export const ITEM_STATUS_TRANSITIONS: Record<string, string[]> = {
-    [ItemStatus.PENDING]: [ItemStatus.CONFIRMED, ItemStatus.CANCELLED],
-    [ItemStatus.CONFIRMED]: [ItemStatus.SHIPPED, ItemStatus.CANCELLED],
-    [ItemStatus.SHIPPED]: [ItemStatus.DELIVERED],
-    [ItemStatus.DELIVERED]: [ItemStatus.RETURN_REQUESTED],
-    [ItemStatus.RETURN_REQUESTED]: [ItemStatus.RETURNED],
+    // Order item created
+    [ItemStatus.PENDING]: [
+        ItemStatus.CONFIRMED,
+        ItemStatus.CANCELLED,
+        ItemStatus.REJECTED,
+    ],
+
+    // Seller confirmed the item
+    [ItemStatus.CONFIRMED]: [
+        ItemStatus.SHIPPED,
+        ItemStatus.CANCELLED,
+        ItemStatus.REJECTED,
+    ],
+
+    // Shipment has been handed over / shipped
+    [ItemStatus.SHIPPED]: [
+        ItemStatus.OUT_FOR_DELIVERY,
+    ],
+
+    // Shipment is with delivery agent
+    [ItemStatus.OUT_FOR_DELIVERY]: [
+        ItemStatus.DELIVERED,
+    ],
+
+    // Customer received the book
+    [ItemStatus.DELIVERED]: [
+        ItemStatus.RETURN_REQUESTED,
+    ],
+
+    // Customer requested return
+    [ItemStatus.RETURN_REQUESTED]: [
+        ItemStatus.RETURNED,
+    ],
+
+    // Book returned
     [ItemStatus.RETURNED]: [],
+
+    // Item cancelled
     [ItemStatus.CANCELLED]: [],
+
+    // Item rejected
+    [ItemStatus.REJECTED]: [],
 };
 
+/* =========================================================
+ * Deposit Status Transitions
+ * ========================================================= */
+
 export const DEPOSIT_STATUS_TRANSITIONS: Record<string, string[]> = {
-    [DepositStatus.PENDING]: [DepositStatus.HOLD],
+    [DepositStatus.PENDING]: [
+        DepositStatus.HOLD,
+    ],
+
     [DepositStatus.HOLD]: [
         DepositStatus.REFUNDED,
         DepositStatus.PARTIALLY_REFUNDED,
         DepositStatus.DEDUCTED,
     ],
+
     [DepositStatus.REFUNDED]: [],
+
     [DepositStatus.PARTIALLY_REFUNDED]: [],
+
     [DepositStatus.DEDUCTED]: [],
 };
 
-/** Item status -> resulting Book status. Adjust once real Book enum is shared. */
-export const ITEM_STATUS_TO_BOOK_STATUS: Partial<Record<ItemStatus, BookStatus>> = {
+/* =========================================================
+ * Item Status -> Book Status
+ * ========================================================= */
+
+export const ITEM_STATUS_TO_BOOK_STATUS: Partial<
+    Record<ItemStatus, BookStatus>
+> = {
+    // Item created
     [ItemStatus.PENDING]: BookStatus.RESERVED,
+
+    // Seller confirmed
     [ItemStatus.CONFIRMED]: BookStatus.RESERVED,
+
+    // Shipment started
     [ItemStatus.SHIPPED]: BookStatus.RENTED,
+
+    // Delivery agent has the book
+    [ItemStatus.OUT_FOR_DELIVERY]: BookStatus.RENTED,
+
+    // Customer received the book
     [ItemStatus.DELIVERED]: BookStatus.RENTED,
+
+    // Customer requested return
     [ItemStatus.RETURN_REQUESTED]: BookStatus.RENTED,
+
+    // Book returned to seller
     [ItemStatus.RETURNED]: BookStatus.AVAILABLE,
+
+    // Cancelled before delivery
     [ItemStatus.CANCELLED]: BookStatus.AVAILABLE,
+
+    // Seller rejected the order
     [ItemStatus.REJECTED]: BookStatus.AVAILABLE,
 };
 

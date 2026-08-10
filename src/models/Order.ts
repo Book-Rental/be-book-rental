@@ -272,7 +272,7 @@ export enum OrderStatus {
     CONFIRMED = "confirmed",
     SHIPPED = "shipped",
     DELIVERED = "delivered",
-   
+    OUT_FOR_DELIVERY = "out_for_delivery",
     RETURN_REQUESTED = "return_requested",
     RETURNED = "returned",
     CANCELLED = "cancelled",
