@@ -16,6 +16,7 @@ import { failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
 import { Messages, UserAddressFields } from "../utils/constants";
 import { uploadToCloudinary } from "../utils/UploadImage";
+import { checkExternalPincodeService } from "../helper/shipmentHelper";
 
 export interface UserQuery {
     search: string;
@@ -289,3 +290,29 @@ export const getAddressById = async (req: Request, res: Response): Promise<void>
         failResponse(res, err.message || "Unable to fetch address.", StatusCode.Bad_Request);
     }
 };
+
+
+export const validateAddress = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { pincode } = req.body;
+
+        if (!pincode) {
+            failResponse(res, "Address is required.", StatusCode.Bad_Request);
+            return;
+        }
+
+
+        // 2. Call the standalone service function
+        const isPincodeValid = await checkExternalPincodeService(pincode);
+
+        if (!isPincodeValid) {
+            successResponse(res, { isValid: false }, "Provided pincode is not serviceable.", StatusCode.OK);
+            return;
+        }
+        // 3. Return success if valid
+        successResponse(res, { isValid: true }, "Address is valid.", StatusCode.OK);
+
+    } catch (err: any) {
+        failResponse(res, err.message || "Unable to validate address.", StatusCode.Bad_Request);
+    }
+}
