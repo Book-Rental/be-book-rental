@@ -24,7 +24,7 @@ route.get("/:orderId", auth as any,getOrderById);
 route.get("/getByUserId/:userId",auth as any, getOrderByUserId);
 route.get("/:orderId/book/:bookId",auth as any, getOrderBookDetails);
 route.get("/:orderId/Item/:ItemId",getOrderByItemId);
-route.post("/craete", auth as any,createOrder);
+route.post("/create", auth as any,createOrder);
 route.delete("/:orderId",auth as any, deleteOrderById);
 route.put('/update/:orderID',auth as any,updateOrderById);
 
