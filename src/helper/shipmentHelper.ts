@@ -64,7 +64,7 @@ export const createShipmentFromOrder = async (
             country: sellerAddress.country,
             location: {
                 type: sellerAddress.location?.type || "Point",
-                coordinates: sellerAddress.location?.coordinates 
+                coordinates: sellerAddress.location?.coordinates
             },
         },
 
@@ -78,7 +78,7 @@ export const createShipmentFromOrder = async (
             country: order.shippingAddress.country,
             location: {
                 type: order.shippingAddress.location?.type || "Point",
-                coordinates: order.shippingAddress.location?.coordinates 
+                coordinates: order.shippingAddress.location?.coordinates
             },
         },
 
@@ -113,5 +113,25 @@ export const createShipmentFromOrder = async (
     } catch (error: any) {
         console.error(`Logistics execution delivery pipeline synchronization failed for order item: ${item._id}`, error.message);
         throw new Error(error.response?.data?.message || "Downstream shipment generation interface crashed.");
+    }
+};
+
+
+export const checkExternalPincodeService = async (pincode: string): Promise<boolean> => {
+    try {
+        const serviceUrl = `${process.env.LOGISTICS_SERVICE_URL}/api/hub/check-serviceability?pincode=${pincode}`;
+        const response = await axios.get(serviceUrl, {
+            headers: {
+                "Content-Type": "application/json",
+                "x-internal-service-token": process.env.INTERNAL_SERVICE_SECRET || "",
+            }
+        });
+      
+        // Adjust this condition based on what the external API actually returns
+        return response.data.data.isServiceable
+    } catch (error) {
+        // Log the error internally but return false to fail the validation
+        console.error("External pincode service error:", error);
+        return false;
     }
 };
