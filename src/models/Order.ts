@@ -226,6 +226,42 @@ export enum ItemStatus {
     REJECTED = "rejected",
 }
 
+export enum ShipmentType {
+    FORWARD = "Forward",
+    RETURN = "Return",
+    EXCHANGE = "Exchange",
+}
+
+export const ShipmentReferenceSchema = new Schema(
+    {
+        shipmentId: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        awbNumber: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        shipmentType: {
+            type: String,
+            enum: Object.values(ShipmentType),
+            required: true,
+        },
+
+        status: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+    },
+    {
+        _id: false,
+    }
+);
 export const OrderItemSchema = new Schema(
     {
         bookId: {
@@ -260,6 +296,10 @@ export const OrderItemSchema = new Schema(
         deposit: {
             type: DepositSchema,
             required: true,
+        },
+        shipmentDetails: {
+            type: [ShipmentReferenceSchema],
+            default: [],
         },
     },
     {

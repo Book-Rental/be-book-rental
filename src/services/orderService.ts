@@ -1,13 +1,14 @@
 import mongoose from "mongoose";
 import Book from "../models/Book";
-import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus } from "../models/Order";
+import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus, ShipmentType } from "../models/Order";
+
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
 import { Messages } from "../utils/constants";
 import { StatusCode } from "../utils/StatusCodes";
 import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStatusFromItems, validateAndResolveItems, validateOrderStatusTransition, validatePaymentStatusTransition } from "../utils/updateOrderFunction";
 import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilters";
-import { createShipmentFromOrder } from "../helper/shipmentHelper";
+import { createReturnShipmentFromOrder, createShipmentFromOrder } from "../helper/shipmentHelper";
 import { sendEmail } from "./email.service";
 import { sendOrderStatusEmail, getShipmentEvent, getOutForDeliveryEvent, getDeliveredEvent } from "./orderEmail.service";
 const { compileTemplate } = require("../templates/template");
@@ -852,88 +853,229 @@ export const updateSellerOrderItemStatusService = async (
     orderItemId: string,
     action: "approve" | "reject"
 ) => {
+    // =========================================================
+    // 1. Validate Order Item ID
+    // =========================================================
+
     if (!mongoose.Types.ObjectId.isValid(orderItemId)) {
-        throw new Error("Invalid order item ID");
+        const error: any = new Error("Invalid order item ID.");
+        error.statusCode = StatusCode.Bad_Request;
+        throw error;
     }
+
+    // =========================================================
+    // 2. Find Order
+    // =========================================================
 
     const order = await Order.findOne({
         "items._id": new mongoose.Types.ObjectId(orderItemId),
     });
 
     if (!order) {
-        throw new Error(Messages.Seller_Order_Item_Not_Found);
+        const error: any = new Error(
+            Messages.Seller_Order_Item_Not_Found
+        );
+
+        error.statusCode = StatusCode.Not_Found;
+        throw error;
     }
 
-    // Find the specific item
+    // =========================================================
+    // 3. Find Specific Item
+    // =========================================================
+
     const orderItem = order.items.find(
-        (item) => item._id && item._id.toString() === orderItemId
+        (item: any) =>
+            item._id &&
+            item._id.toString() === orderItemId
     );
 
     if (!orderItem) {
-        throw new Error(Messages.Seller_Order_Item_Not_Found);
+        const error: any = new Error(
+            Messages.Seller_Order_Item_Not_Found
+        );
+
+        error.statusCode = StatusCode.Not_Found;
+        throw error;
     }
 
-    // Verify seller owns this item
+    // =========================================================
+    // 4. Verify Seller Ownership
+    // =========================================================
+
     if (orderItem.sellerId.toString() !== sellerUserId) {
-        throw new Error("Unauthorized: This order item does not belong to you");
+        const error: any = new Error(
+            "Unauthorized: This order item does not belong to you."
+        );
+
+        error.statusCode = StatusCode.Unauthorized;
+        throw error;
     }
 
-    // Only allow approve/reject for pending items
+    // =========================================================
+    // 5. Only PENDING Items Can Be Processed
+    // =========================================================
+
     if (orderItem.itemStatus !== ItemStatus.PENDING) {
-        throw new Error(Messages.Order_Item_Already_Processed);
-    }
-
-    // Update item status
-    orderItem.itemStatus =
-        action === "approve"
-            ? ItemStatus.CONFIRMED
-            : ItemStatus.REJECTED;
-
-    await order.save();
-
-    // ✅ Create Shipment only when seller approves
-    if (action === "approve") {
-        await createShipmentFromOrder(order, orderItem);
-    }
-
-    // Determine if all items are processed
-    const allItems = order.items;
-
-    const allConfirmedOrRejected = allItems.every(
-        (item) =>
-            item.itemStatus === ItemStatus.CONFIRMED ||
-            item.itemStatus === ItemStatus.REJECTED
-    );
-
-    if (allConfirmedOrRejected) {
-        const anyRejected = allItems.some(
-            (item) => item.itemStatus === ItemStatus.REJECTED
+        const error: any = new Error(
+            Messages.Order_Item_Already_Processed
         );
 
-        const anyConfirmed = allItems.some(
-            (item) => item.itemStatus === ItemStatus.CONFIRMED
+        error.statusCode = StatusCode.Bad_Request;
+        throw error;
+    }
+
+    // =========================================================
+    // 6. REJECT
+    // =========================================================
+
+    if (action === "reject") {
+        orderItem.itemStatus = ItemStatus.REJECTED;
+
+        // -----------------------------------------------------
+        // Check whether all items are processed
+        // -----------------------------------------------------
+
+        const allItemsProcessed = order.items.every(
+            (item: any) =>
+                item.itemStatus === ItemStatus.CONFIRMED ||
+                item.itemStatus === ItemStatus.REJECTED
         );
 
-        if (anyConfirmed && anyRejected) {
-            order.orderStatus = OrderStatus.CONFIRMED;
-        } else if (
-            allItems.every(
-                (item) => item.itemStatus === ItemStatus.REJECTED
-            )
-        ) {
-            order.orderStatus = OrderStatus.CANCELLED;
-        } else {
-            order.orderStatus = OrderStatus.CONFIRMED;
+        if (allItemsProcessed) {
+            const anyConfirmed = order.items.some(
+                (item: any) =>
+                    item.itemStatus === ItemStatus.CONFIRMED
+            );
+
+            if (anyConfirmed) {
+                order.orderStatus = OrderStatus.CONFIRMED;
+            } else {
+                order.orderStatus = OrderStatus.CANCELLED;
+            }
         }
 
         await order.save();
+
+        return {
+            orderItemId,
+            itemStatus: orderItem.itemStatus,
+            orderStatus: order.orderStatus,
+            shipmentCreated: false,
+        };
     }
 
-    return {
-        orderItemId,
-        itemStatus: orderItem.itemStatus,
-        orderStatus: order.orderStatus,
-    };
+    // =========================================================
+    // 7. APPROVE
+    // =========================================================
+    //
+    // IMPORTANT:
+    //
+    // Do NOT immediately save CONFIRMED.
+    //
+    // First create the shipment.
+    //
+    // If shipment creation succeeds:
+    //     item -> CONFIRMED
+    //
+    // If shipment creation fails:
+    //     item stays PENDING
+    //
+    // =========================================================
+
+    if (action === "approve") {
+        try {
+            // -------------------------------------------------
+            // Create Shipment FIRST
+            // -------------------------------------------------
+
+            const shipment = await createShipmentFromOrder(
+                order,
+                orderItem
+            );
+
+            // -------------------------------------------------
+            // Shipment creation succeeded
+            // Now update item status
+            // -------------------------------------------------
+
+            orderItem.itemStatus = ItemStatus.CONFIRMED;
+
+            // -------------------------------------------------
+            // Check all items
+            // -------------------------------------------------
+
+            const allItemsProcessed = order.items.every(
+                (item: any) =>
+                    item.itemStatus === ItemStatus.CONFIRMED ||
+                    item.itemStatus === ItemStatus.REJECTED
+            );
+
+            if (allItemsProcessed) {
+                const anyConfirmed = order.items.some(
+                    (item: any) =>
+                        item.itemStatus === ItemStatus.CONFIRMED
+                );
+
+                if (anyConfirmed) {
+                    order.orderStatus = OrderStatus.CONFIRMED;
+                } else {
+                    order.orderStatus = OrderStatus.CANCELLED;
+                }
+            }
+
+            // -------------------------------------------------
+            // Save Order
+            // -------------------------------------------------
+
+            await order.save();
+
+            return {
+                orderItemId,
+                itemStatus: orderItem.itemStatus,
+                orderStatus: order.orderStatus,
+                shipmentCreated: true,
+                shipment,
+            };
+        } catch (error: any) {
+            // -------------------------------------------------
+            // Shipment creation FAILED
+            //
+            // Do NOT change item status.
+            // Do NOT change order status.
+            //
+            // Item remains PENDING.
+            // -------------------------------------------------
+
+            console.error(
+                `Failed to create shipment for order item ${orderItemId}:`,
+                error.message
+            );
+
+            const shipmentError: any = new Error(
+                error.message ||
+                    "Shipment creation failed. Order item was not approved."
+            );
+
+            shipmentError.statusCode =
+                error.statusCode ||
+                StatusCode.Internal_Server_Error;
+
+            throw shipmentError;
+        }
+    }
+
+    // =========================================================
+    // 8. Invalid Action
+    // =========================================================
+
+    const error: any = new Error(
+        `Invalid action: ${action}. Use "approve" or "reject".`
+    );
+
+    error.statusCode = StatusCode.Bad_Request;
+
+    throw error;
 };
 
 export const getOrderBookDetailsService = async (orderId: string, bookId: string) => {
@@ -1064,6 +1206,10 @@ export const updateOrderByIdService = async (
     orderId: string,
     updateData: any
 ) => {
+    // =====================================================
+    // 1. Get Order
+    // =====================================================
+
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -1072,7 +1218,10 @@ export const updateOrderByIdService = async (
         throw error;
     }
 
-    // Store previous item statuses
+    // =====================================================
+    // 2. Store Previous Item Statuses
+    // =====================================================
+
     const previousItemStatuses = new Map(
         order.items.map((item: any) => [
             item._id.toString(),
@@ -1080,18 +1229,40 @@ export const updateOrderByIdService = async (
         ])
     );
 
-    // Validate
+    // =====================================================
+    // 3. Validate Updates
+    // =====================================================
+
     validateOrderStatusTransition(order, updateData);
+
     validatePaymentStatusTransition(order, updateData);
 
-    const resolvedItems = validateAndResolveItems(order, updateData);
+    const resolvedItems = validateAndResolveItems(
+        order,
+        updateData
+    );
 
-    // Apply Updates
+    // =====================================================
+    // 4. Apply Item Updates
+    // =====================================================
+
     applyItemUpdates(resolvedItems);
+
+    // =====================================================
+    // 5. Apply Top Level Order Updates
+    // =====================================================
+
     applyTopLevelUpdates(order, updateData);
 
-    // Sync Order Status
+    // =====================================================
+    // 6. Sync Order Status From Items
+    // =====================================================
+
     syncOrderStatusFromItems(order);
+
+    // =====================================================
+    // 7. Save Order Transaction
+    // =====================================================
 
     const session = await mongoose.startSession();
 
@@ -1100,7 +1271,10 @@ export const updateOrderByIdService = async (
 
         await order.save({ session });
 
-        await syncBookStatuses(resolvedItems, session);
+        await syncBookStatuses(
+            resolvedItems,
+            session
+        );
 
         await session.commitTransaction();
     } catch (error) {
@@ -1110,29 +1284,161 @@ export const updateOrderByIdService = async (
         await session.endSession();
     }
 
-    // Create Shipment AFTER transaction is committed
-    for (const item of order.items) {
-        const previousStatus = previousItemStatuses.get(item._id.toString());
+    // =====================================================
+    // 8. Create Shipments AFTER Order Transaction
+    // =====================================================
 
-        // Shipment should be created only once when item becomes CONFIRMED
+    for (const item of order.items) {
+        const previousStatus =
+            previousItemStatuses.get(
+                item._id.toString()
+            );
+
+        // =================================================
+        // FORWARD SHIPMENT
+        // pending/other status -> CONFIRMED
+        // =================================================
+
         if (
             previousStatus !== ItemStatus.CONFIRMED &&
             item.itemStatus === ItemStatus.CONFIRMED
         ) {
             try {
-                await createShipmentFromOrder(order, item);
+                // -----------------------------------------
+                // Check whether Forward shipment already
+                // exists for this order item
+                // -----------------------------------------
 
-                console.log(
-                    `Shipment created successfully for item ${item._id}`
-                );
+                const forwardShipmentExists =
+                    item.shipmentDetails?.some(
+                        (shipment: any) =>
+                            shipment.shipmentType ===
+                            ShipmentType.FORWARD
+                    );
+
+                if (!forwardShipmentExists) {
+                    const shipment =
+                        await createShipmentFromOrder(
+                            order,
+                            item
+                        );
+
+                    // -------------------------------------
+                    // Store shipment reference in Order
+                    // -------------------------------------
+
+                    if (shipment) {
+                        item.shipmentDetails =
+                            item.shipmentDetails || [];
+
+                        item.shipmentDetails.push({
+                            shipmentId:
+                                shipment.shipmentId ||
+                                shipment._id?.toString(),
+
+                            awbNumber:
+                                shipment.awbNumber,
+
+                            shipmentType:
+                                ShipmentType.FORWARD,
+
+                            status:
+                                shipment.currentStatus || 'created'
+                        });
+
+                        await order.save();
+
+                        console.log(
+                            `Forward shipment created successfully for item ${item._id}`
+                        );
+                    }
+                } else {
+                    console.log(
+                        `Forward shipment already exists for item ${item._id}`
+                    );
+                }
             } catch (error) {
                 console.error(
-                    `Failed to create shipment for item ${item._id}`,
+                    `Failed to create forward shipment for item ${item._id}`,
                     error
                 );
 
-                // Do not throw here because the order has already been updated.
-                // You can later retry shipment creation using a cron job or queue.
+                // Order is already committed.
+                // Do not throw here.
+            }
+        }
+
+        // =================================================
+        // RETURN SHIPMENT
+        // Item -> RETURN_REQUESTED
+        // =================================================
+
+        if (
+            previousStatus !== ItemStatus.RETURN_REQUESTED &&
+            item.itemStatus === ItemStatus.RETURN_REQUESTED
+        ) {
+            try {
+                // -----------------------------------------
+                // Check whether Return shipment already
+                // exists
+                // -----------------------------------------
+
+                const returnShipmentExists =
+                    item.shipmentDetails?.some(
+                        (shipment: any) =>
+                            shipment.shipmentType ===
+                            ShipmentType.RETURN
+                    );
+
+                if (!returnShipmentExists) {
+                    const returnShipment =
+                        await createReturnShipmentFromOrder(
+                            order,
+                            item
+                        );
+
+                    // -------------------------------------
+                    // Store Return Shipment Reference
+                    // -------------------------------------
+
+                    if (returnShipment) {
+                        item.shipmentDetails =
+                            item.shipmentDetails || [];
+
+                        item.shipmentDetails.push({
+                            shipmentId:
+                                returnShipment.shipmentId ||
+                                returnShipment._id?.toString(),
+
+                            awbNumber:
+                                returnShipment.awbNumber,
+
+                            shipmentType:
+                                ShipmentType.RETURN,
+
+                            status:
+                                returnShipment.currentStatus || 'Created'
+                        });
+
+                        await order.save();
+
+                        console.log(
+                            `Return shipment created successfully for item ${item._id}`
+                        );
+                    }
+                } else {
+                    console.log(
+                        `Return shipment already exists for item ${item._id}`
+                    );
+                }
+            } catch (error) {
+                console.error(
+                    `Failed to create return shipment for item ${item._id}`,
+                    error
+                );
+
+                // Order is already committed.
+                // Do not throw here.
             }
         }
     }

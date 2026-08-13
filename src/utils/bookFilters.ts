@@ -169,7 +169,7 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
                 filter.purchasePrice.$lte = max;
             }
         }
-
+        filter.auction = false; // Exclude auction books from the filter results
         //  * Boolean Filters
 
         if (isPopular !== undefined) {
