@@ -837,6 +837,7 @@ export const getSellerOrderItemDetailService = async (
                 extensionCount: orderItem.rental?.extensionCount || 0,
                 lateFee: orderItem.rental?.lateFee || 0,
             },
+            shipementDetails: orderItem.shipmentDetails || [],
             itemStatus: orderItem.itemStatus,
             quantity: orderItem.quantity,
             buyer: buyerInfo,
