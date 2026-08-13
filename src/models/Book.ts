@@ -32,7 +32,7 @@ export interface IBook extends IBasicFields {
     images?: Image[];
     isAvailable?: boolean;
     quantity: number;
-    auction: boolean;
+    // auction: boolean;
 }
 
 const bookSchema = new Schema<IBook>({
@@ -132,10 +132,10 @@ const bookSchema = new Schema<IBook>({
             altText: { type: String, required: true },
         },
     ],
-    auction: {
-        type: Boolean,
-        default: false,
-    },
+    // auction: {
+    //     type: Boolean,
+    //     default: false,
+    // },
     isActive: {
         type: Boolean,
         default: true,
