@@ -13,7 +13,6 @@ export enum BookStatus {
 /* =========================================================
  * Order Status Transitions
  * ========================================================= */
-
 export const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
     [OrderStatus.PENDING]: [
         OrderStatus.CONFIRMED,
@@ -38,6 +37,10 @@ export const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
     ],
 
     [OrderStatus.RETURN_REQUESTED]: [
+        OrderStatus.RETURN_IN_PROGRESS,
+    ],
+
+    [OrderStatus.RETURN_IN_PROGRESS]: [
         OrderStatus.RETURNED,
     ],
 
@@ -101,6 +104,11 @@ export const ITEM_STATUS_TRANSITIONS: Record<string, string[]> = {
 
     // Customer requested return
     [ItemStatus.RETURN_REQUESTED]: [
+        ItemStatus.RETURN_IN_PROGRESS,
+    ],
+
+    // Return package is in transit back to the seller
+    [ItemStatus.RETURN_IN_PROGRESS]: [
         ItemStatus.RETURNED,
     ],
 
@@ -161,6 +169,9 @@ export const ITEM_STATUS_TO_BOOK_STATUS: Partial<
     // Customer requested return
     [ItemStatus.RETURN_REQUESTED]: BookStatus.RENTED,
 
+    // Return is being shipped back
+    [ItemStatus.RETURN_IN_PROGRESS]: BookStatus.RENTED,
+
     // Book returned to seller
     [ItemStatus.RETURNED]: BookStatus.AVAILABLE,
 
@@ -218,6 +229,7 @@ export function validatePaymentStatusTransition(order: any, updateData: any) {
         );
     }
 }
+
 
 export function validateRentalDates(existingItem: any, rental: any, today: Date) {
     if (rental.rentStartDate) {
