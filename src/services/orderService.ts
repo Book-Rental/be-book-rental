@@ -932,10 +932,6 @@ export const updateSellerOrderItemStatusService = async (
     if (action === "reject") {
         orderItem.itemStatus = ItemStatus.REJECTED;
 
-        // -----------------------------------------------------
-        // Check whether all items are processed
-        // -----------------------------------------------------
-
         const allItemsProcessed = order.items.every(
             (item: any) =>
                 item.itemStatus === ItemStatus.CONFIRMED ||
@@ -948,11 +944,9 @@ export const updateSellerOrderItemStatusService = async (
                     item.itemStatus === ItemStatus.CONFIRMED
             );
 
-            if (anyConfirmed) {
-                order.orderStatus = OrderStatus.CONFIRMED;
-            } else {
-                order.orderStatus = OrderStatus.CANCELLED;
-            }
+            order.orderStatus = anyConfirmed
+                ? OrderStatus.CONFIRMED
+                : OrderStatus.CANCELLED;
         }
 
         await order.save();
@@ -968,42 +962,75 @@ export const updateSellerOrderItemStatusService = async (
     // =========================================================
     // 7. APPROVE
     // =========================================================
-    //
-    // IMPORTANT:
-    //
-    // Do NOT immediately save CONFIRMED.
-    //
-    // First create the shipment.
-    //
-    // If shipment creation succeeds:
-    //     item -> CONFIRMED
-    //
-    // If shipment creation fails:
-    //     item stays PENDING
-    //
-    // =========================================================
 
     if (action === "approve") {
         try {
             // -------------------------------------------------
-            // Create Shipment FIRST
+            // Check whether Forward shipment already exists
             // -------------------------------------------------
 
-            const shipment = await createShipmentFromOrder(
-                order,
-                orderItem
-            );
+            const existingForwardShipment =
+                orderItem.shipmentDetails?.find(
+                    (shipment: any) =>
+                        shipment.shipmentType ===
+                        ShipmentType.FORWARD
+                );
+
+            let shipment = null;
 
             // -------------------------------------------------
+            // Create Forward Shipment only if it does not exist
+            // -------------------------------------------------
+
+            if (!existingForwardShipment) {
+                shipment = await createShipmentFromOrder(
+                    order,
+                    orderItem
+                );
+
+                if (!shipment) {
+                    throw new Error(
+                        "Forward shipment creation failed."
+                    );
+                }
+
+                // -------------------------------------------------
+                // Store shipment reference
+                // -------------------------------------------------
+
+                orderItem.shipmentDetails =
+                    orderItem.shipmentDetails || [];
+
+                orderItem.shipmentDetails.push({
+                    shipmentId:
+                        shipment.shipmentId ||
+                        shipment._id?.toString(),
+
+                    awbNumber:
+                        shipment.awbNumber,
+
+                    shipmentType:
+                        ShipmentType.FORWARD,
+
+                    status:
+                        shipment.currentStatus || 'created',
+                });
+            } else {
+                console.log(
+                    `Forward shipment already exists for item ${orderItemId}`
+                );
+            }
+
+            // =====================================================
             // Shipment creation succeeded
-            // Now update item status
-            // -------------------------------------------------
+            // NOW change item status to CONFIRMED
+            // =====================================================
 
             orderItem.itemStatus = ItemStatus.CONFIRMED;
 
-            // -------------------------------------------------
-            // Check all items
-            // -------------------------------------------------
+            // =====================================================
+            // 8. Determine Order Status
+            // =====================================================
 
             const allItemsProcessed = order.items.every(
                 (item: any) =>
@@ -1017,16 +1044,14 @@ export const updateSellerOrderItemStatusService = async (
                         item.itemStatus === ItemStatus.CONFIRMED
                 );
 
-                if (anyConfirmed) {
-                    order.orderStatus = OrderStatus.CONFIRMED;
-                } else {
-                    order.orderStatus = OrderStatus.CANCELLED;
-                }
+                order.orderStatus = anyConfirmed
+                    ? OrderStatus.CONFIRMED
+                    : OrderStatus.CANCELLED;
             }
 
-            // -------------------------------------------------
-            // Save Order
-            // -------------------------------------------------
+            // =====================================================
+            // 9. Save Order
+            // =====================================================
 
             await order.save();
 
@@ -1038,23 +1063,21 @@ export const updateSellerOrderItemStatusService = async (
                 shipment,
             };
         } catch (error: any) {
-            // -------------------------------------------------
-            // Shipment creation FAILED
+            // =====================================================
+            // Shipment creation failed
             //
-            // Do NOT change item status.
-            // Do NOT change order status.
-            //
-            // Item remains PENDING.
-            // -------------------------------------------------
+            // Item remains PENDING
+            // Order remains unchanged
+            // =====================================================
 
             console.error(
-                `Failed to create shipment for order item ${orderItemId}:`,
+                `Failed to create forward shipment for order item ${orderItemId}:`,
                 error.message
             );
 
             const shipmentError: any = new Error(
                 error.message ||
-                    "Shipment creation failed. Order item was not approved."
+                "Shipment creation failed. Order item was not approved."
             );
 
             shipmentError.statusCode =
@@ -1066,7 +1089,7 @@ export const updateSellerOrderItemStatusService = async (
     }
 
     // =========================================================
-    // 8. Invalid Action
+    // 10. Invalid Action
     // =========================================================
 
     const error: any = new Error(
