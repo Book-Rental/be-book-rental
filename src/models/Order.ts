@@ -221,6 +221,7 @@ export enum ItemStatus {
     OUT_FOR_DELIVERY = "out_for_delivery",
     DELIVERED = "delivered",
     RETURN_REQUESTED = "return_requested",
+    RETURN_IN_PROGRESS = "return_in_progress",
     RETURNED = "returned",
     CANCELLED = "cancelled",
     REJECTED = "rejected",
@@ -314,6 +315,7 @@ export enum OrderStatus {
     DELIVERED = "delivered",
     OUT_FOR_DELIVERY = "out_for_delivery",
     RETURN_REQUESTED = "return_requested",
+    RETURN_IN_PROGRESS = "return_in_progress",
     RETURNED = "returned",
     CANCELLED = "cancelled",
 }
