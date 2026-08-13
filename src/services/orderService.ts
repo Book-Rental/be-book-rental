@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import Book from "../models/Book";
 import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus } from "../models/Order";
-
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
 import { Messages } from "../utils/constants";
@@ -10,6 +9,7 @@ import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStat
 import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilters";
 import { createShipmentFromOrder } from "../helper/shipmentHelper";
 import { sendEmail } from "./email.service";
+import { sendOrderStatusEmail, getShipmentEvent, getOutForDeliveryEvent, getDeliveredEvent } from "./orderEmail.service";
 const { compileTemplate } = require("../templates/template");
 
 //getAll Order
@@ -1137,6 +1137,87 @@ export const updateOrderByIdService = async (
         }
     }
 
+    for (const item of order.items) {
+        const previousStatus = previousItemStatuses.get(
+            item._id.toString()
+        );
+
+        const currentStatus = item.itemStatus;
+
+        if (
+            previousStatus !== currentStatus &&
+            currentStatus !== ItemStatus.PENDING &&
+            currentStatus !== ItemStatus.SHIPPED
+        ) {
+            console.log("hadsjdghaskjhj")
+            await sendOrderStatusEmail(order, item);
+        }
+    }
+
+    const previousStatuses = Array.from(
+        previousItemStatuses.values()
+    );
+
+    const currentStatuses = order.items.map(
+        (item: any) => item.itemStatus
+    );
+
+    const previousShipmentEvent =
+        getShipmentEvent(previousStatuses);
+
+    const currentShipmentEvent =
+        getShipmentEvent(currentStatuses);
+
+    if (
+        currentShipmentEvent &&
+        currentShipmentEvent !== previousShipmentEvent
+    ) {
+        const firstItem = order.items[0];
+
+        await sendOrderStatusEmail(
+            order,
+            firstItem,
+            currentShipmentEvent
+        );
+    }
+
+    const previousOutForDeliveryEvent =
+        getOutForDeliveryEvent(previousStatuses);
+
+    const currentOutForDeliveryEvent =
+        getOutForDeliveryEvent(currentStatuses);
+
+    if (
+        currentOutForDeliveryEvent &&
+        currentOutForDeliveryEvent !== previousOutForDeliveryEvent
+    ) {
+        const firstItem = order.items[0];
+
+        await sendOrderStatusEmail(
+            order,
+            firstItem,
+            currentOutForDeliveryEvent
+        );
+    }
+
+    const previousDeliveredEvent =
+        getDeliveredEvent(previousStatuses);
+
+    const currentDeliveredEvent =
+        getDeliveredEvent(currentStatuses);
+
+    if (
+        currentDeliveredEvent &&
+        currentDeliveredEvent !== previousDeliveredEvent
+    ) {
+        const firstItem = order.items[0];
+
+        await sendOrderStatusEmail(
+            order,
+            firstItem,
+            currentDeliveredEvent
+        );
+    }
     return order;
 };
 
