@@ -1098,7 +1098,7 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
     }
 
     const orderItem = order.items.find((item: any) => item.bookId?._id.toString() === bookId);
-    console.log('hhhd', orderItem.bookId)
+    console.log('hhhd', orderItem)
     if (!orderItem) {
         throw new Error("Book not found in this order.");
     }
@@ -1127,7 +1127,7 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
             edition: orderItem.bookId.edition,
             coverImage: orderItem.bookId.coverImage,
         },
-
+        shipmentDetails: orderItem.shipmentDetails || [],
         seller: {
             _id: orderItem.sellerId?._id,
             name: orderItem.sellerId?.name,
