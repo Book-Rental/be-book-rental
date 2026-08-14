@@ -1,4 +1,4 @@
-import Order, { ItemStatus } from "../models/Order";
+import Order, { ItemStatus, ShipmentType } from "../models/Order";
 import { compileTemplate } from "../templates/template";
 import { sendEmail } from "./email.service";
 
@@ -34,12 +34,23 @@ const STATUS_EMAIL_CONFIG: Record<
         flag: "SEND_PARTIALLY_SHIPPED_EMAIL",
     },
 
+    PARTIALLY_OUT_FOR_DELIVERY: {
+        title: "Your Order Is Partially Out for Delivery!",
+        message: "Some items from your order are out for delivery.",
+        flag: "SEND_PARTIALLY_OUT_FOR_DELIVERY_EMAIL",
+    },
+
     OUT_FOR_DELIVERY: {
         title: "Your Order Is Out for Delivery!",
         message: "Your order item is out for delivery and will reach you soon.",
         flag: "SEND_OUT_FOR_DELIVERY_EMAIL",
     },
 
+    PARTIALLY_DELIVERED: {
+        title: "Your Order Is Partially Delivered!",
+        message: "Some items from your order have been delivered.",
+        flag: "SEND_PARTIALLY_DELIVERED_EMAIL",
+    },
     DELIVERED: {
         title: "Your Order Has Been Delivered!",
         message: "Your order item has been delivered successfully.",
@@ -137,6 +148,21 @@ const sendOrderStatusEmail = async (
         return;
     }
 
+    const awbNumber = item.shipmentDetails?.find(
+        (shipment: any) =>
+            shipment.shipmentType === ShipmentType.FORWARD
+    )?.awbNumber;
+
+    const frontendUrl =
+        process.env.FRONTEND_URL ||
+        "https://fe-book-rental-host.onrender.com";
+
+    const trackingUrl = awbNumber
+        ? `${frontendUrl}/track-shipment/${awbNumber}`
+        : "";
+
+    const orderDetailsUrl =
+        `${frontendUrl}/order-details?orderId=${order._id}&bookId=${item.bookId}`;
     const isEmailEnabled = process.env[config.flag] === "true";
 
     if (!isEmailEnabled) {
@@ -168,22 +194,13 @@ const sendOrderStatusEmail = async (
                 orderItem._id.toString() === item._id.toString()
         );
 
-        const orderId = populatedOrder._id.toString();
-
-        const bookId = populatedItem?.bookId?._id
-            ? populatedItem.bookId._id.toString()
-            : populatedItem?.bookId?.toString();
-
-        const trackingUrl =
-            `https://fe-book-rental-host.onrender.com/order-details` +
-            `?orderId=${orderId}&bookId=${bookId}`;
-
         const html = compileTemplate("orderStatusEmail.hbs", {
             statusTitle: config.title,
             statusMessage: config.message,
             orderNumber: populatedOrder.orderNumber,
-            bookName: populatedItem?.bookId?.name || "",
             trackingUrl,
+            orderDetailsUrl,
+            bookName: populatedItem?.bookId?.name || "",
             year: new Date().getFullYear(),
         });
 

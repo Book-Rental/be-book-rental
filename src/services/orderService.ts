@@ -1502,13 +1502,17 @@ export const updateOrderByIdService = async (
         currentShipmentEvent &&
         currentShipmentEvent !== previousShipmentEvent
     ) {
-        const firstItem = order.items[0];
-
-        await sendOrderStatusEmail(
-            order,
-            firstItem,
-            currentShipmentEvent
+        const shipmentItem = order.items.find(
+            (item: any) => item.itemStatus === ItemStatus.SHIPPED
         );
+
+        if (shipmentItem) {
+            await sendOrderStatusEmail(
+                order,
+                shipmentItem,
+                currentShipmentEvent
+            );
+        }
     }
 
     const previousOutForDeliveryEvent =
@@ -1521,13 +1525,18 @@ export const updateOrderByIdService = async (
         currentOutForDeliveryEvent &&
         currentOutForDeliveryEvent !== previousOutForDeliveryEvent
     ) {
-        const firstItem = order.items[0];
-
-        await sendOrderStatusEmail(
-            order,
-            firstItem,
-            currentOutForDeliveryEvent
+        const outForDeliveryItem = order.items.find(
+            (item: any) =>
+                item.itemStatus === ItemStatus.OUT_FOR_DELIVERY
         );
+
+        if (outForDeliveryItem) {
+            await sendOrderStatusEmail(
+                order,
+                outForDeliveryItem,
+                currentOutForDeliveryEvent
+            );
+        }
     }
 
     const previousDeliveredEvent =
@@ -1540,13 +1549,18 @@ export const updateOrderByIdService = async (
         currentDeliveredEvent &&
         currentDeliveredEvent !== previousDeliveredEvent
     ) {
-        const firstItem = order.items[0];
-
-        await sendOrderStatusEmail(
-            order,
-            firstItem,
-            currentDeliveredEvent
+        const deliveredItem = order.items.find(
+            (item: any) =>
+                item.itemStatus === ItemStatus.DELIVERED
         );
+
+        if (deliveredItem) {
+            await sendOrderStatusEmail(
+                order,
+                deliveredItem,
+                currentDeliveredEvent
+            );
+        }
     }
     return order;
 };
