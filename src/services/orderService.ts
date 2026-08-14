@@ -1230,10 +1230,7 @@ export const updateOrderByIdService = async (
     orderId: string,
     updateData: any
 ) => {
-    // =====================================================
-    // 1. Get Order
-    // =====================================================
-
+ 
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -1242,21 +1239,12 @@ export const updateOrderByIdService = async (
         throw error;
     }
 
-    // =====================================================
-    // 2. Store Previous Item Statuses
-    // =====================================================
-
     const previousItemStatuses = new Map(
         order.items.map((item: any) => [
             item._id.toString(),
             item.itemStatus,
         ])
     );
-
-    // =====================================================
-    // 3. Validate Updates
-    // =====================================================
-
     validateOrderStatusTransition(order, updateData);
 
     validatePaymentStatusTransition(order, updateData);
@@ -1265,28 +1253,10 @@ export const updateOrderByIdService = async (
         order,
         updateData
     );
-
-    // =====================================================
-    // 4. Apply Item Updates
-    // =====================================================
-
     applyItemUpdates(resolvedItems);
 
-    // =====================================================
-    // 5. Apply Top Level Order Updates
-    // =====================================================
-
     applyTopLevelUpdates(order, updateData);
-
-    // =====================================================
-    // 6. Sync Order Status From Items
-    // =====================================================
-
     syncOrderStatusFromItems(order);
-
-    // =====================================================
-    // 7. Save Order Transaction
-    // =====================================================
 
     const session = await mongoose.startSession();
 
@@ -1308,31 +1278,17 @@ export const updateOrderByIdService = async (
         await session.endSession();
     }
 
-    // =====================================================
-    // 8. Create Shipments AFTER Order Transaction
-    // =====================================================
-
     for (const item of order.items) {
         const previousStatus =
             previousItemStatuses.get(
                 item._id.toString()
             );
 
-        // =================================================
-        // FORWARD SHIPMENT
-        // pending/other status -> CONFIRMED
-        // =================================================
-
         if (
             previousStatus !== ItemStatus.CONFIRMED &&
             item.itemStatus === ItemStatus.CONFIRMED
         ) {
             try {
-                // -----------------------------------------
-                // Check whether Forward shipment already
-                // exists for this order item
-                // -----------------------------------------
-
                 const forwardShipmentExists =
                     item.shipmentDetails?.some(
                         (shipment: any) =>
@@ -1346,10 +1302,6 @@ export const updateOrderByIdService = async (
                             order,
                             item
                         );
-
-                    // -------------------------------------
-                    // Store shipment reference in Order
-                    // -------------------------------------
 
                     if (shipment) {
                         item.shipmentDetails =
@@ -1367,7 +1319,8 @@ export const updateOrderByIdService = async (
                                 ShipmentType.FORWARD,
 
                             status:
-                                shipment.currentStatus || 'created'
+                                shipment.currentStatus ||
+                                "created",
                         });
 
                         await order.save();
@@ -1386,27 +1339,14 @@ export const updateOrderByIdService = async (
                     `Failed to create forward shipment for item ${item._id}`,
                     error
                 );
-
-                // Order is already committed.
-                // Do not throw here.
             }
         }
-
-        // =================================================
-        // RETURN SHIPMENT
-        // Item -> RETURN_REQUESTED
-        // =================================================
 
         if (
             previousStatus !== ItemStatus.RETURN_REQUESTED &&
             item.itemStatus === ItemStatus.RETURN_REQUESTED
         ) {
             try {
-                // -----------------------------------------
-                // Check whether Return shipment already
-                // exists
-                // -----------------------------------------
-
                 const returnShipmentExists =
                     item.shipmentDetails?.some(
                         (shipment: any) =>
@@ -1420,10 +1360,6 @@ export const updateOrderByIdService = async (
                             order,
                             item
                         );
-
-                    // -------------------------------------
-                    // Store Return Shipment Reference
-                    // -------------------------------------
 
                     if (returnShipment) {
                         item.shipmentDetails =
@@ -1441,7 +1377,8 @@ export const updateOrderByIdService = async (
                                 ShipmentType.RETURN,
 
                             status:
-                                returnShipment.currentStatus || 'Created'
+                                returnShipment.currentStatus ||
+                                "Created",
                         });
 
                         await order.save();
@@ -1460,29 +1397,43 @@ export const updateOrderByIdService = async (
                     `Failed to create return shipment for item ${item._id}`,
                     error
                 );
-
-                // Order is already committed.
-                // Do not throw here.
             }
         }
     }
 
     for (const item of order.items) {
-        const previousStatus = previousItemStatuses.get(
-            item._id.toString()
-        );
+        const previousStatus =
+            previousItemStatuses.get(
+                item._id.toString()
+            );
 
         const currentStatus = item.itemStatus;
 
         if (
-            previousStatus !== currentStatus &&
-            currentStatus !== ItemStatus.PENDING &&
-            currentStatus !== ItemStatus.SHIPPED
+            previousStatus === currentStatus
         ) {
-            console.log("hadsjdghaskjhj")
-            await sendOrderStatusEmail(order, item);
+            continue;
         }
+
+        if (
+            currentStatus === ItemStatus.SHIPPED ||
+            currentStatus === ItemStatus.OUT_FOR_DELIVERY ||
+            currentStatus === ItemStatus.DELIVERED
+        ) {
+            continue;
+        }
+
+        // Pending should not send an email
+        if (currentStatus === ItemStatus.PENDING) {
+            continue;
+        }
+
+        await sendOrderStatusEmail(
+            order,
+            item
+        );
     }
+
 
     const previousStatuses = Array.from(
         previousItemStatuses.values()
@@ -1491,6 +1442,24 @@ export const updateOrderByIdService = async (
     const currentStatuses = order.items.map(
         (item: any) => item.itemStatus
     );
+
+    for (const item of order.items) {
+        const previousStatus =
+            previousItemStatuses.get(
+                item._id.toString()
+            );
+
+        if (
+            previousStatus !== ItemStatus.SHIPPED &&
+            item.itemStatus === ItemStatus.SHIPPED
+        ) {
+            await sendOrderStatusEmail(
+                order,
+                item,
+                "SHIPPED"
+            );
+        }
+    }
 
     const previousShipmentEvent =
         getShipmentEvent(previousStatuses);
@@ -1502,15 +1471,44 @@ export const updateOrderByIdService = async (
         currentShipmentEvent &&
         currentShipmentEvent !== previousShipmentEvent
     ) {
-        const shipmentItem = order.items.find(
-            (item: any) => item.itemStatus === ItemStatus.SHIPPED
-        );
+        const shipmentItem =
+            order.items.find((item: any) => {
+                const previousStatus =
+                    previousItemStatuses.get(
+                        item._id.toString()
+                    );
+
+                return (
+                    previousStatus !== ItemStatus.SHIPPED &&
+                    item.itemStatus === ItemStatus.SHIPPED
+                );
+            });
 
         if (shipmentItem) {
             await sendOrderStatusEmail(
                 order,
                 shipmentItem,
                 currentShipmentEvent
+            );
+        }
+    }
+
+    for (const item of order.items) {
+        const previousStatus =
+            previousItemStatuses.get(
+                item._id.toString()
+            );
+
+        if (
+            previousStatus !==
+                ItemStatus.OUT_FOR_DELIVERY &&
+            item.itemStatus ===
+                ItemStatus.OUT_FOR_DELIVERY
+        ) {
+            await sendOrderStatusEmail(
+                order,
+                item,
+                "OUT_FOR_DELIVERY"
             );
         }
     }
@@ -1523,18 +1521,47 @@ export const updateOrderByIdService = async (
 
     if (
         currentOutForDeliveryEvent &&
-        currentOutForDeliveryEvent !== previousOutForDeliveryEvent
+        currentOutForDeliveryEvent !==
+            previousOutForDeliveryEvent
     ) {
-        const outForDeliveryItem = order.items.find(
-            (item: any) =>
-                item.itemStatus === ItemStatus.OUT_FOR_DELIVERY
-        );
+        const outForDeliveryItem =
+            order.items.find((item: any) => {
+                const previousStatus =
+                    previousItemStatuses.get(
+                        item._id.toString()
+                    );
+
+                return (
+                    previousStatus !==
+                        ItemStatus.OUT_FOR_DELIVERY &&
+                    item.itemStatus ===
+                        ItemStatus.OUT_FOR_DELIVERY
+                );
+            });
 
         if (outForDeliveryItem) {
             await sendOrderStatusEmail(
                 order,
                 outForDeliveryItem,
                 currentOutForDeliveryEvent
+            );
+        }
+    }
+
+    for (const item of order.items) {
+        const previousStatus =
+            previousItemStatuses.get(
+                item._id.toString()
+            );
+
+        if (
+            previousStatus !== ItemStatus.DELIVERED &&
+            item.itemStatus === ItemStatus.DELIVERED
+        ) {
+            await sendOrderStatusEmail(
+                order,
+                item,
+                "DELIVERED"
             );
         }
     }
@@ -1549,10 +1576,18 @@ export const updateOrderByIdService = async (
         currentDeliveredEvent &&
         currentDeliveredEvent !== previousDeliveredEvent
     ) {
-        const deliveredItem = order.items.find(
-            (item: any) =>
-                item.itemStatus === ItemStatus.DELIVERED
-        );
+        const deliveredItem =
+            order.items.find((item: any) => {
+                const previousStatus =
+                    previousItemStatuses.get(
+                        item._id.toString()
+                    );
+
+                return (
+                    previousStatus !== ItemStatus.DELIVERED &&
+                    item.itemStatus === ItemStatus.DELIVERED
+                );
+            });
 
         if (deliveredItem) {
             await sendOrderStatusEmail(
@@ -1562,6 +1597,7 @@ export const updateOrderByIdService = async (
             );
         }
     }
+
     return order;
 };
 
