@@ -6,6 +6,7 @@ import { StatusCode } from "../utils/StatusCodes";
 import { Request, Response } from "express";
 import { uploadToCloudinary } from "../utils/UploadImage";
 import {
+    createAuctionBookService,
     createBookService,
     deleteBookByIdService,
     getBookByIdService,
@@ -88,6 +89,7 @@ export const createBook = async (req: Request, res: Response) => {
             images: alternativeImages, // Now successfully satisfies your subdocument constraint!
             sellerId: body.sellerId || authenticatedUserId,
             createdBy: authenticatedUserId,
+            isAuction: body.isAuction ?? false,
         };
 
         // 4. Delegate database insertion to service layer
@@ -230,6 +232,32 @@ export const updateBookById = async (req: Request, res: Response) => {
             res,
             err.message || Messages.Internal_Server_Error,
             StatusCode.Bad_Request
+        );
+    }
+};
+
+export const createAuction = async (req: Request, res: Response) => {
+    try {
+        const auction = await createAuctionBookService(req.body);
+        return successResponse(
+            res,
+            auction,
+            "Book auction created successfully",
+            StatusCode.Created
+        );
+    } catch (err: unknown) {
+        console.error("Auction Book Controller Error:", err);
+        if (err instanceof Error) {
+            return failResponse(
+                res,
+                err.message,
+                StatusCode.Bad_Request
+            );
+        }
+        return failResponse(
+            res,
+            Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
         );
     }
 };
