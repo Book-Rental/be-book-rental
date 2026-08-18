@@ -29,7 +29,9 @@ const getCategoryIds = async (keyword: string) => {
 
 //  * Build MongoDB Filter
 
-export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
+export const buildFilter = async (
+    query: any
+): Promise<FilterQuery<IBook>> => {
     const filter: FilterQuery<IBook> = {};
     const andConditions: FilterQuery<IBook>[] = [];
 
@@ -46,16 +48,15 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
             isAvailable,
             availableForSale,
             availableForRent,
+            isAuction,
         } = query;
 
-        //  * Category Id
-
+        // Category ID
         if (categoryID && Types.ObjectId.isValid(categoryID)) {
             filter.categoryId = new Types.ObjectId(categoryID);
         }
 
-        //  * Category Name
-
+        // Category Name
         if (categoryName?.trim()) {
             const categoryNames = categoryName
                 .split(",")
@@ -76,15 +77,13 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
             };
         }
 
-        //  * Global Search
-        //  * Search In:
-        //  * 1. Book Name
-        //  * 2. Author
-        //  * 3. Category
-
+        // Global Search
+        // Search in:
+        // 1. Book Name
+        // 2. Author
+        // 3. Category
         if (search?.trim()) {
             const keyword = decodeSearchText(search);
-
             const categoryIds = await getCategoryIds(keyword);
 
             const searchConditions: FilterQuery<IBook>[] = [
@@ -94,7 +93,6 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
                         $options: "i",
                     },
                 },
-
                 {
                     author: {
                         $regex: keyword,
@@ -116,11 +114,10 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
             });
         }
 
-        //  * Name Filter
-        //  * Search Only:
-        //  * 1. Book Name
-        //  * 2. Author
-
+        // Name Filter
+        // Search in:
+        // 1. Book Name
+        // 2. Author
         if (name?.trim()) {
             const keyword = decodeSearchText(name);
 
@@ -132,7 +129,6 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
                             $options: "i",
                         },
                     },
-
                     {
                         author: {
                             $regex: keyword,
@@ -143,18 +139,21 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
             });
         }
 
-        //  * Language Filter
-
+        // Language Filter
         const lang = language?.trim();
 
         if (lang && lang.toLowerCase() !== "all") {
             filter.language = {
-                $in: lang.split(",").map((item: string) => new RegExp(`^${item.trim()}$`, "i")),
+                $in: lang
+                    .split(",")
+                    .map(
+                        (item: string) =>
+                            new RegExp(`^${item.trim()}$`, "i")
+                    ),
             };
         }
 
-        //  * Purchase Price Filter
-
+        // Purchase Price Filter
         const min = Number(minPrice);
         const max = Number(maxPrice);
 
@@ -169,9 +168,8 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
                 filter.purchasePrice.$lte = max;
             }
         }
-        // filter.auction = false; // Exclude auction books from the filter results
-        //  * Boolean Filters
 
+        // Boolean Filters
         if (isPopular !== undefined) {
             filter.isPopular = toBoolean(isPopular);
         }
@@ -188,9 +186,12 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
             filter.availableForRent = toBoolean(availableForRent);
         }
 
-        //  * Attach AND Conditions
+        if (isAuction !== undefined) {
+            filter.isAuction = toBoolean(isAuction);
+        }
 
-        if (andConditions.length) {
+        // Attach AND Conditions
+        if (andConditions.length > 0) {
             filter.$and = andConditions;
         }
 
@@ -201,7 +202,6 @@ export const buildFilter = async (query: any): Promise<FilterQuery<IBook>> => {
         return filter;
     }
 };
-
 //  * Get Sort Option
 
 export const getSortOption = (sortBy?: string): Record<string, 1 | -1> => {
