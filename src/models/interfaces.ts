@@ -71,3 +71,11 @@ export interface ICategory {
     createdBy?: Types.ObjectId;
     updatedBy?: Types.ObjectId;
 }
+
+export interface IAuction {
+    bidPrice: number;
+    buyNowPrice?: number;
+    duration: number;
+    startDate: Date; 
+    bookId: Types.ObjectId;
+}

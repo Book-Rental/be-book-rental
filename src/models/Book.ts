@@ -32,7 +32,8 @@ export interface IBook extends IBasicFields {
     images?: Image[];
     isAvailable?: boolean;
     quantity: number;
-    // auction: boolean;
+    isAuction: boolean;
+    auctionId?: mongoose.Types.ObjectId;
 }
 
 const bookSchema = new Schema<IBook>({
@@ -132,10 +133,15 @@ const bookSchema = new Schema<IBook>({
             altText: { type: String, required: true },
         },
     ],
-    // auction: {
-    //     type: Boolean,
-    //     default: false,
-    // },
+    isAuction: {
+        type: Boolean,
+        default: false,
+        required: true
+    },
+    auctionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Auction",
+    },
     isActive: {
         type: Boolean,
         default: true,

@@ -287,20 +287,16 @@ export const buildBookAggregationPipeline = async (
     limit: number = 10
 ) => {
     const filter = await buildFilter(filterQuery);
-
     const sortOption = getSortOption(sortBy);
-
     const { skip, limitNum } = getPagination(page, limit);
 
     return [
-        //  * Apply Filters
-
+        // Apply filters
         {
             $match: filter,
         },
 
-        //  * Join Category Collection
-
+        // Join Category
         {
             $lookup: {
                 from: "categories",
@@ -310,8 +306,6 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        //  * Convert category array into object
-
         {
             $unwind: {
                 path: "$category",
@@ -319,22 +313,46 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        //  * Category Object
+        // Join Auction using Book._id -> Auction.bookId
+        {
+            $lookup: {
+                from: "auctions",
+                localField: "_id",
+                foreignField: "bookId",
+                as: "auction",
+            },
+        },
 
+        {
+            $unwind: {
+                path: "$auction",
+                preserveNullAndEmptyArrays: true,
+            },
+        },
+
+        // Build response fields
         {
             $addFields: {
                 category: {
                     id: "$category._id",
                     name: "$category.name",
                 },
+
+                auction: {
+                    $cond: [
+                        { $eq: ["$isAuction", true] },
+                        "$auction",
+                        null,
+                    ],
+                },
             },
         },
 
-        //  * Remove unwanted fields
-
+        // Remove unwanted fields
         {
             $project: {
                 __v: 0,
+
                 "category.__v": 0,
                 "category.createdAt": 0,
                 "category.updatedAt": 0,
@@ -344,17 +362,19 @@ export const buildBookAggregationPipeline = async (
                 "category.status": 0,
                 "category.version": 0,
                 "category.isActive": 0,
+
+                "auction.__v": 0,
+                "auction.createdAt": 0,
+                "auction.updatedAt": 0,
             },
         },
 
-        //  Sort
-
+        // Sort
         {
             $sort: sortOption,
         },
 
-        //  * Pagination
-
+        // Pagination
         {
             $skip: skip,
         },

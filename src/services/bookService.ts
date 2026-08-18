@@ -1,6 +1,9 @@
+import mongoose from "mongoose";
+import Auction from "../models/Auction";
 import Book, { IBook } from "../models/Book";
 import Category from "../models/Category";
 import { buildPaginationQuery } from "../utils/appFunctions";
+import { IAuction } from "../models/interfaces";
 
 export const createBookService = async (data: Partial<IBook>) => {
     try {
@@ -29,7 +32,10 @@ export const deleteBookByIdService = async (id: string) => {
 
 export const getBookByIdService = async (id: string) => {
     try {
-        return await Book.findById(id);
+        return await Book.findById(id).populate({
+                path: "auctionId",
+                select: "bookId bidPrice buyNowPrice duration startDate createdAt",
+            });
     } catch (err) {
         throw err;
     }
@@ -82,6 +88,10 @@ export const getBooksBySellerIdService = async (sellerId: string, query: any) =>
         const hasMore = page < totalPages;
         const books = await Book.find(filter)
             .populate("categoryId", "name")
+            .populate({
+                path: "auctionId",
+                select: "bookId bidPrice buyNowPrice duration startDate createdAt",
+            })
             .skip(skip)
             .limit(limit);
 
@@ -97,5 +107,59 @@ export const getBooksBySellerIdService = async (sellerId: string, query: any) =>
         };
     } catch (err) {
         throw err;
+    }
+};
+
+export const createAuctionBookService = async (
+    data: Partial<IAuction>
+) => {
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+        const book = await Book.findById(data.bookId).session(session);
+        if (!book) {
+            throw new Error("Book not found");
+        }
+        if (book.isAuction) {
+            throw new Error(
+                "This book is already available for auction"
+            );
+        }
+
+        const auction = await Auction.create(
+            [
+                {
+                    bookId: data.bookId,
+                    bidPrice: data.bidPrice,
+                    buyNowPrice: data.buyNowPrice,
+                    duration: data.duration,
+                    startDate: data.startDate,
+                },
+            ],
+            { session }
+        );
+
+        const createdAuction = auction[0];
+        // Update Book with auction information
+        await Book.findByIdAndUpdate(
+            data.bookId,
+            {
+                isAuction: true,
+                auctionId: createdAuction._id,
+            },
+            {
+                session,
+                new: true,
+            }
+        );
+
+        await session.commitTransaction();
+
+        return createdAuction;
+    } catch (error) {
+        await session.abortTransaction();
+        throw error;
+    } finally {
+        await session.endSession();
     }
 };
