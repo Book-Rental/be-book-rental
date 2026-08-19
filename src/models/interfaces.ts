@@ -1,4 +1,5 @@
 import { Types } from "mongoose";
+import { AuctionStatus } from "./Auction";
 
 export interface IBasicFields {
     isActive: boolean;
@@ -78,4 +79,5 @@ export interface IAuction {
     duration: number;
     startDate: Date; 
     bookId: Types.ObjectId;
+    status: AuctionStatus;
 }
