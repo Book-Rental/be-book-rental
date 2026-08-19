@@ -4,6 +4,7 @@ import Book, { IBook } from "../models/Book";
 import Category from "../models/Category";
 import { buildPaginationQuery } from "../utils/appFunctions";
 import { IAuction } from "../models/interfaces";
+import { calculateAuctionStatus } from "../helper/auctionStatus";
 
 export const createBookService = async (data: Partial<IBook>) => {
     try {
@@ -34,7 +35,7 @@ export const getBookByIdService = async (id: string) => {
     try {
         return await Book.findById(id).populate({
                 path: "auctionId",
-                select: "bookId bidPrice buyNowPrice duration startDate createdAt",
+                select: "bookId bidPrice buyNowPrice duration status startDate createdAt",
             });
     } catch (err) {
         throw err;
@@ -126,6 +127,11 @@ export const createAuctionBookService = async (
             );
         }
 
+         const status = calculateAuctionStatus(
+            data.startDate!,
+            data.duration!
+        );
+
         const auction = await Auction.create(
             [
                 {
@@ -134,6 +140,7 @@ export const createAuctionBookService = async (
                     buyNowPrice: data.buyNowPrice,
                     duration: data.duration,
                     startDate: data.startDate,
+                    status
                 },
             ],
             { session }
@@ -162,4 +169,39 @@ export const createAuctionBookService = async (
     } finally {
         await session.endSession();
     }
+};
+
+export const updateAuctionBookService = async (
+  auctionId: string,
+  data: Partial<IAuction>
+) => {
+  const auction = await Auction.findById(auctionId);
+
+  if (!auction) {
+    throw new Error("Auction not found");
+  }
+
+  const startDate = data.startDate ?? auction.startDate;
+  const duration = data.duration ?? auction.duration;
+
+  const status = calculateAuctionStatus(
+    startDate,
+    duration
+  );
+
+  const updatedAuction = await Auction.findByIdAndUpdate(
+    auctionId,
+    {
+      $set: {
+        ...data,
+        status,
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+
+  return updatedAuction;
 };

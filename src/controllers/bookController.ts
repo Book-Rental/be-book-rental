@@ -11,8 +11,10 @@ import {
     deleteBookByIdService,
     getBookByIdService,
     getBooksBySellerIdService,
+    updateAuctionBookService,
     updateBookByIdService,
 } from "../services/bookService";
+import mongoose from "mongoose";
 
 export const getAllBooks = async (req: Request, res: Response) => {
     try {
@@ -260,4 +262,38 @@ export const createAuction = async (req: Request, res: Response) => {
             StatusCode.Internal_Server_Error
         );
     }
+};
+
+export const updateAuctionBook = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { auctionId } = req.params;
+ if (
+      typeof auctionId !== "string" ||
+      !mongoose.Types.ObjectId.isValid(auctionId)
+    ) {
+      return res.status(400).json({
+        status: "Error",
+        message: "Invalid auction ID",
+      });
+    }
+    const updatedAuction =
+      await updateAuctionBookService(
+        auctionId,
+        req.body
+      );
+
+    return res.status(200).json({
+      status: "Success",
+      message: "Auction updated successfully",
+      data: updatedAuction,
+    });
+  } catch (error: any) {
+    return res.status(400).json({
+      status: "Error",
+      message: error.message,
+    });
+  }
 };
