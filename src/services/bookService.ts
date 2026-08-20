@@ -5,6 +5,7 @@ import Category from "../models/Category";
 import { buildPaginationQuery } from "../utils/appFunctions";
 import { IAuction } from "../models/interfaces";
 import { calculateAuctionStatus } from "../helper/auctionStatus";
+import AuctionBid from "../models/AuctionBid";
 
 export const createBookService = async (data: Partial<IBook>) => {
     try {
@@ -33,10 +34,60 @@ export const deleteBookByIdService = async (id: string) => {
 
 export const getBookByIdService = async (id: string) => {
     try {
-        return await Book.findById(id).populate({
+        const book = await Book.findById(id)
+            .populate({
                 path: "auctionId",
-                select: "bookId bidPrice buyNowPrice duration status startDate createdAt",
-            });
+                select: `
+                    bookId
+                    bidPrice
+                    buyNowPrice
+                    duration
+                    status
+                    startDate
+                    createdAt
+                `,
+            })
+            .lean();
+
+        if (!book) {
+            return null;
+        }
+
+        const auction = book.auctionId as any;
+
+        if (auction && auction._id) {
+            const highestBid = await AuctionBid.findOne({
+                auctionId: auction._id,
+            })
+                .sort({ bidPrice: -1 })
+                .populate({
+                    path: "userId",
+                    select: "_id firstName lastName",
+                })
+                .select("bidPrice userId")
+                .lean();
+
+            return {
+                ...book,
+
+                auctionId: {
+                    ...auction,
+
+                    currentBidPrice:
+                        highestBid?.bidPrice ??
+                        auction.bidPrice,
+
+                    highestBidder: highestBid?.userId
+                        ? {
+                              userId: (highestBid.userId as any)._id,
+                              name: `${(highestBid.userId as any).firstName} ${(highestBid.userId as any).lastName}`,
+                          }
+                        : null,
+                },
+            };
+        }
+
+        return book;
     } catch (err) {
         throw err;
     }
@@ -51,11 +102,17 @@ export const updateBookByIdService = async (id: string, data: Partial<IBook>) =>
     }
 };
 
-export const getBooksBySellerIdService = async (sellerId: string, query: any) => {
+export const getBooksBySellerIdService = async (
+    sellerId: string,
+    query: any
+) => {
     try {
-        const { skip, limit, page } = buildPaginationQuery(query);
+        const { skip, limit, page } =
+            buildPaginationQuery(query);
 
-        const filter: Record<string, any> = { sellerId };
+        const filter: Record<string, any> = {
+            sellerId,
+        };
 
         if (query.categoryId) {
             filter.categoryId = query.categoryId;
@@ -63,7 +120,10 @@ export const getBooksBySellerIdService = async (sellerId: string, query: any) =>
 
         if (query.categoryName) {
             const category = await Category.findOne({
-                name: { $regex: `^${query.categoryName}$`, $options: "i" },
+                name: {
+                    $regex: `^${query.categoryName}$`,
+                    $options: "i",
+                },
                 isActive: true,
             }).select("_id");
 
@@ -83,21 +143,65 @@ export const getBooksBySellerIdService = async (sellerId: string, query: any) =>
             }
         }
 
-        const totalRecords = await Book.countDocuments(filter);
-        const totalPages = Math.ceil(totalRecords / limit);
+        const totalRecords =
+            await Book.countDocuments(filter);
+
+        const totalPages = Math.ceil(
+            totalRecords / limit
+        );
 
         const hasMore = page < totalPages;
+
         const books = await Book.find(filter)
             .populate("categoryId", "name")
             .populate({
                 path: "auctionId",
-                select: "bookId bidPrice buyNowPrice duration startDate createdAt",
+                select: `
+                    bookId
+                    bidPrice
+                    buyNowPrice
+                    duration
+                    startDate
+                    createdAt
+                `,
             })
             .skip(skip)
-            .limit(limit);
+            .limit(limit)
+            .lean();
+
+        const booksWithCurrentBidPrice =
+            await Promise.all(
+                books.map(async (book) => {
+                    const auction = book.auctionId as any;
+
+                    if (!auction || !auction._id) {
+                        return book;
+                    }
+
+                    const highestBid =
+                        await AuctionBid.findOne({
+                            auctionId: auction._id,
+                        })
+                            .sort({
+                                bidPrice: -1,
+                            })
+                            .select("bidPrice")
+                            .lean();
+
+                    return {
+                        ...book,
+                        auctionId: {
+                            ...auction,
+                            currentBidPrice:
+                                highestBid?.bidPrice ??
+                                auction.bidPrice,
+                        },
+                    };
+                })
+            );
 
         return {
-            books,
+            books: booksWithCurrentBidPrice,
             meta: {
                 totalRecords,
                 totalPages,

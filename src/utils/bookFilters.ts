@@ -1,4 +1,4 @@
-import { FilterQuery, Types } from "mongoose";
+import { FilterQuery, PipelineStage, Types } from "mongoose";
 import { IBook } from "../models/Book";
 import Category from "../models/Category";
 
@@ -285,13 +285,12 @@ export const buildBookAggregationPipeline = async (
     sortBy?: string,
     page: number = 1,
     limit: number = 10
-) => {
+): Promise<PipelineStage[]> => {
     const filter = await buildFilter(filterQuery);
     const sortOption = getSortOption(sortBy);
     const { skip, limitNum } = getPagination(page, limit);
 
-    return [
-        // Apply filters
+    const pipeline: PipelineStage[] = [
         {
             $match: filter,
         },
@@ -313,7 +312,7 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        // Join Auction using Book._id -> Auction.bookId
+        // Join Auction
         {
             $lookup: {
                 from: "auctions",
@@ -330,7 +329,50 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        // Build response fields
+        {
+            $lookup: {
+                from: "auctionbids",
+                let: {
+                    auctionId: "$auction._id",
+                },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $eq: [
+                                    "$auctionId",
+                                    "$$auctionId",
+                                ],
+                            },
+                        },
+                    },
+                    {
+                        $sort: {
+                            bidPrice: -1,
+                        },
+                    },
+                    {
+                        $limit: 1,
+                    },
+                    {
+                        $project: {
+                            _id: 0,
+                            bidPrice: 1,
+                        },
+                    },
+                ],
+                as: "highestBid",
+            },
+        },
+
+        {
+            $unwind: {
+                path: "$highestBid",
+                preserveNullAndEmptyArrays: true,
+            },
+        },
+
+        // Build response
         {
             $addFields: {
                 category: {
@@ -340,8 +382,25 @@ export const buildBookAggregationPipeline = async (
 
                 auction: {
                     $cond: [
-                        { $eq: ["$isAuction", true] },
-                        "$auction",
+                        {
+                            $eq: [
+                                "$isAuction",
+                                true,
+                            ],
+                        },
+                        {
+                            $mergeObjects: [
+                                "$auction",
+                                {
+                                    currentBidPrice: {
+                                        $ifNull: [
+                                            "$highestBid.bidPrice",
+                                            "$auction.bidPrice",
+                                        ],
+                                    },
+                                },
+                            ],
+                        },
                         null,
                     ],
                 },
@@ -352,6 +411,9 @@ export const buildBookAggregationPipeline = async (
         {
             $project: {
                 __v: 0,
+
+                categoryId: 0,
+                highestBid: 0,
 
                 "category.__v": 0,
                 "category.createdAt": 0,
@@ -369,12 +431,10 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        // Sort
         {
             $sort: sortOption,
         },
 
-        // Pagination
         {
             $skip: skip,
         },
@@ -383,4 +443,6 @@ export const buildBookAggregationPipeline = async (
             $limit: limitNum,
         },
     ];
+
+    return pipeline;
 };
