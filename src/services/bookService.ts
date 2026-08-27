@@ -56,13 +56,41 @@ export const getBookByIdService = async (id: string) => {
         const auction = book.auctionId as any;
 
         if (auction && auction._id) {
+
+            // Calculate auction end date
+            const endDate = new Date(auction.startDate);
+
+            endDate.setDate(
+                endDate.getDate() + auction.duration
+            );
+
+            const now = new Date();
+
+            // Update status if auction duration is completed
+            if (
+                auction.status === "live" &&
+                now >= endDate
+            ) {
+                await Auction.findByIdAndUpdate(
+                    auction._id,
+                    {
+                        $set: {
+                            status: "completed",
+                        },
+                    }
+                );
+
+                // Update response object also
+                auction.status = "completed";
+            }
+
             const highestBid = await AuctionBid.findOne({
                 auctionId: auction._id,
             })
                 .sort({ bidPrice: -1 })
                 .populate({
                     path: "userId",
-                    select: "_id firstName lastName",
+                    select: "_id firstName lastName email",
                 })
                 .select("bidPrice userId")
                 .lean();
@@ -79,8 +107,15 @@ export const getBookByIdService = async (id: string) => {
 
                     highestBidder: highestBid?.userId
                         ? {
-                              userId: (highestBid.userId as any)._id,
-                              name: `${(highestBid.userId as any).firstName} ${(highestBid.userId as any).lastName}`,
+                              userId:
+                                  (highestBid.userId as any)._id,
+
+                              name:
+                                  `${(highestBid.userId as any).firstName} ` +
+                                  `${(highestBid.userId as any).lastName}`,
+
+                            email:
+                                  `${(highestBid.userId as any).email} ` 
                           }
                         : null,
                 },
@@ -88,6 +123,7 @@ export const getBookByIdService = async (id: string) => {
         }
 
         return book;
+
     } catch (err) {
         throw err;
     }

@@ -1,5 +1,5 @@
 import Book from "../models/Book";
-import { buildBookAggregationPipeline, buildFilter } from "../utils/bookFilters";
+import { buildBookAggregationPipeline, buildBookCountAggregationPipeline, buildFilter } from "../utils/bookFilters";
 import { Messages } from "../utils/constants";
 import { errorResponse, failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
@@ -17,32 +17,68 @@ import {
 } from "../services/bookService";
 import mongoose from "mongoose";
 
-export const getAllBooks = async (req: Request, res: Response) => {
+export const getAllBooks = async (
+    req: Request,
+    res: Response
+) => {
     try {
-        const { sortBy, page = 1, limit = 12, ...filterQuery } = req.query;
-        // Build the aggregation pipeline with the updated filters
-        const pipeline = await buildBookAggregationPipeline(
-            filterQuery,
-            sortBy as string,
-            Number(page),
-            Number(limit)
-        );
+        const {
+            sortBy,
+            page = 1,
+            limit = 12,
+            ...filterQuery
+        } = req.query;
+
+        const pageNumber = Number(page);
+        const limitNumber = Number(limit);
+
+        // Product pipeline
+        const pipeline =
+            await buildBookAggregationPipeline(
+                filterQuery,
+                sortBy as string,
+                pageNumber,
+                limitNumber
+            );
 
         const products = await Book.aggregate(pipeline);
-        const totalCount = await Book.countDocuments(await buildFilter(filterQuery));
-        const hasMore = (Number(page) - 1) * Number(limit) + products.length < totalCount;
-        successResponse(res, {
+
+        // Count pipeline
+        const countPipeline =
+            await buildBookCountAggregationPipeline(
+                filterQuery
+            );
+
+        const countResult =
+            await Book.aggregate(countPipeline);
+
+        const totalCount =
+            countResult[0]?.totalCount || 0;
+
+        const totalPages = Math.ceil(
+            totalCount / limitNumber
+        );
+
+        const hasMore =
+            pageNumber < totalPages;
+
+        return successResponse(res, {
             products,
             totalCount,
             hasMore,
-            currentPage: Number(page),
-            totalPages: Math.ceil(totalCount / Number(limit)),
+            currentPage: pageNumber,
+            totalPages,
         });
+
     } catch (error) {
-        errorResponse(res, "Error fetching products by filters");
+        console.error(error);
+
+        return errorResponse(
+            res,
+            "Error fetching products by filters"
+        );
     }
 };
-
 export const createBook = async (req: Request, res: Response) => {
     try {
         const body = req.body;
