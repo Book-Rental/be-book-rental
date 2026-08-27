@@ -49,6 +49,7 @@ export const buildFilter = async (
             availableForSale,
             availableForRent,
             isAuction,
+            activeStatus
         } = query;
 
         // Category ID
@@ -190,6 +191,17 @@ export const buildFilter = async (
             filter.isAuction = toBoolean(isAuction);
         }
 
+        if (activeStatus?.trim()) {
+    const statuses = activeStatus
+        .split(",")
+        .map((status: string) => status.trim().toLowerCase())
+        .filter(Boolean);
+
+    filter.activeStatus = {
+        $in: statuses,
+    };
+}
+
         // Attach AND Conditions
         if (andConditions.length > 0) {
             filter.$and = andConditions;
@@ -289,7 +301,7 @@ export const buildBookAggregationPipeline = async (
     const filter = await buildFilter(filterQuery);
     const sortOption = getSortOption(sortBy);
     const { skip, limitNum } = getPagination(page, limit);
-
+ const { activeStatus } = filterQuery;
     const pipeline: PipelineStage[] = [
         {
             $match: filter,
@@ -328,7 +340,21 @@ export const buildBookAggregationPipeline = async (
                 preserveNullAndEmptyArrays: true,
             },
         },
-
+...(activeStatus?.trim()
+    ? [
+          {
+              $match: {
+                  "auction.status": {
+                      $in: activeStatus
+                          .split(",")
+                          .map((status: string) =>
+                              status.trim().toLowerCase()
+                          ),
+                  },
+              },
+          },
+      ]
+    : []),
         {
             $lookup: {
                 from: "auctionbids",
