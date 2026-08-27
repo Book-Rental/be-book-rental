@@ -49,7 +49,6 @@ export const buildFilter = async (
             availableForSale,
             availableForRent,
             isAuction,
-            activeStatus
         } = query;
 
         // Category ID
@@ -191,16 +190,16 @@ export const buildFilter = async (
             filter.isAuction = toBoolean(isAuction);
         }
 
-        if (activeStatus?.trim()) {
-    const statuses = activeStatus
-        .split(",")
-        .map((status: string) => status.trim().toLowerCase())
-        .filter(Boolean);
+//         if (activeStatus?.trim()) {
+//     const statuses = activeStatus
+//         .split(",")
+//         .map((status: string) => status.trim().toLowerCase())
+//         .filter(Boolean);
 
-    filter.activeStatus = {
-        $in: statuses,
-    };
-}
+//     filter.activeStatus = {
+//         $in: statuses,
+//     };
+// }
 
         // Attach AND Conditions
         if (andConditions.length > 0) {
@@ -298,16 +297,34 @@ export const buildBookAggregationPipeline = async (
     page: number = 1,
     limit: number = 10
 ): Promise<PipelineStage[]> => {
+
     const filter = await buildFilter(filterQuery);
+
     const sortOption = getSortOption(sortBy);
-    const { skip, limitNum } = getPagination(page, limit);
- const { activeStatus } = filterQuery;
+
+    const { skip, limitNum } = getPagination(
+        page,
+        limit
+    );
+
+    const { status } = filterQuery;
+
+    const auctionStatuses =
+        status
+            ?.split(",")
+            .map((item: string) =>
+                item.trim().toLowerCase()
+            )
+            .filter(Boolean);
+
     const pipeline: PipelineStage[] = [
+
+        // Book filters
         {
             $match: filter,
         },
 
-        // Join Category
+        // Category lookup
         {
             $lookup: {
                 from: "categories",
@@ -324,7 +341,7 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        // Join Auction
+        // Auction lookup
         {
             $lookup: {
                 from: "auctions",
@@ -340,21 +357,21 @@ export const buildBookAggregationPipeline = async (
                 preserveNullAndEmptyArrays: true,
             },
         },
-...(activeStatus?.trim()
-    ? [
-          {
-              $match: {
-                  "auction.status": {
-                      $in: activeStatus
-                          .split(",")
-                          .map((status: string) =>
-                              status.trim().toLowerCase()
-                          ),
+
+        // Auction status filter
+        ...(auctionStatuses?.length
+            ? [
+                  {
+                      $match: {
+                          "auction.status": {
+                              $in: auctionStatuses,
+                          },
+                      },
                   },
-              },
-          },
-      ]
-    : []),
+              ]
+            : []),
+
+        // Highest bid lookup
         {
             $lookup: {
                 from: "auctionbids",
@@ -380,12 +397,6 @@ export const buildBookAggregationPipeline = async (
                     {
                         $limit: 1,
                     },
-                    {
-                        $project: {
-                            _id: 0,
-                            bidPrice: 1,
-                        },
-                    },
                 ],
                 as: "highestBid",
             },
@@ -398,7 +409,6 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        // Build response
         {
             $addFields: {
                 category: {
@@ -433,23 +443,15 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
-        // Remove unwanted fields
         {
             $project: {
                 __v: 0,
-
                 categoryId: 0,
                 highestBid: 0,
 
                 "category.__v": 0,
                 "category.createdAt": 0,
                 "category.updatedAt": 0,
-                "category.createdBy": 0,
-                "category.updatedBy": 0,
-                "category.description": 0,
-                "category.status": 0,
-                "category.version": 0,
-                "category.isActive": 0,
 
                 "auction.__v": 0,
                 "auction.createdAt": 0,
@@ -467,6 +469,68 @@ export const buildBookAggregationPipeline = async (
 
         {
             $limit: limitNum,
+        },
+    ];
+
+    return pipeline;
+};
+
+export const buildBookCountAggregationPipeline = async (
+    filterQuery: any
+): Promise<PipelineStage[]> => {
+
+    const filter =
+        await buildFilter(filterQuery);
+
+    const { status } = filterQuery;
+
+    const auctionStatuses = status
+        ?.split(",")
+        .map((item: string) =>
+            item.trim().toLowerCase()
+        )
+        .filter(Boolean);
+
+    const pipeline: PipelineStage[] = [
+
+        // Apply Book filters
+        {
+            $match: filter,
+        },
+
+        // Join Auction
+        {
+            $lookup: {
+                from: "auctions",
+                localField: "_id",
+                foreignField: "bookId",
+                as: "auction",
+            },
+        },
+
+        {
+            $unwind: {
+                path: "$auction",
+                preserveNullAndEmptyArrays: true,
+            },
+        },
+
+        // Apply Auction status filter
+        ...(auctionStatuses?.length
+            ? [
+                  {
+                      $match: {
+                          "auction.status": {
+                              $in: auctionStatuses,
+                          },
+                      },
+                  },
+              ]
+            : []),
+
+        // Count matching books
+        {
+            $count: "totalCount",
         },
     ];
 
