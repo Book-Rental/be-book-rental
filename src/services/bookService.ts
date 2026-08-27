@@ -309,3 +309,51 @@ export const updateAuctionBookService = async (
 
   return updatedAuction;
 };
+
+export const getBookAuctionBidDetailsService = async (
+  bookId: string,
+  userId: string
+) => {
+  const book = await Book.findById(bookId).lean();
+
+  if (!book) {
+    return null;
+  }
+
+  const auction = await Auction.findOne({
+    bookId,
+  }).lean();
+
+  if (!auction) {
+    throw new Error("Auction not found for this book");
+  }
+
+  // Highest bid from all users
+  const highestBid = await AuctionBid.findOne({
+    auctionId: auction._id,
+  })
+    .sort({ bidPrice: -1 })
+    .lean();
+
+  // Highest bid of this particular user
+  const userBid = await AuctionBid.findOne({
+    auctionId: auction._id,
+    userId,
+  })
+    .sort({ bidPrice: -1 })
+    .lean();
+
+  const currentBid =
+    highestBid?.bidPrice ?? auction.bidPrice;
+
+  const isHighestBidder =
+    highestBid?.userId?.toString() === userId;
+
+  return {
+    book,
+    auction,
+    currentBid,
+    userBid,
+    isHighestBidder,
+  };
+};

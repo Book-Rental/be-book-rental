@@ -9,6 +9,7 @@ import {
     createAuctionBookService,
     createBookService,
     deleteBookByIdService,
+    getBookAuctionBidDetailsService,
     getBookByIdService,
     getBooksBySellerIdService,
     updateAuctionBookService,
@@ -295,5 +296,52 @@ export const updateAuctionBook = async (
       status: "Error",
       message: error.message,
     });
+  }
+};
+
+export const getBookAuctionBidDetails = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { bookId, userId } = req.params;
+
+    if (
+      typeof bookId !== "string" ||
+      typeof userId !== "string"
+    ) {
+      return failResponse(
+        res,
+        "Invalid book ID or user ID",
+        StatusCode.Bad_Request
+      );
+    }
+
+    const data =
+      await getBookAuctionBidDetailsService(
+        bookId,
+        userId
+      );
+
+    if (!data) {
+      return failResponse(
+        res,
+        Messages.Book_Not_Found,
+        StatusCode.Not_Found
+      );
+    }
+
+    return successResponse(
+      res,
+      data,
+      "Auction bid details fetched successfully",
+      StatusCode.OK
+    );
+  } catch (err: any) {
+    return failResponse(
+      res,
+      err.message || Messages.Internal_Server_Error,
+      StatusCode.Bad_Request
+    );
   }
 };

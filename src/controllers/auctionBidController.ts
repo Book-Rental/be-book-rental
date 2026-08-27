@@ -3,8 +3,12 @@ import {
     createAuctionBidService,
     getAllAuctionBidsService,
     getAllUserBidsService,
+    updateAuctionBidService,
 } from "../services/auctionBidService";
 import mongoose from "mongoose";
+import { failResponse, successResponse } from "../utils/response";
+import { StatusCode } from "../utils/StatusCodes";
+import { Messages } from "../utils/constants";
 
 export const createAuctionBid = async (
     req: Request,
@@ -146,5 +150,58 @@ export const getAllUserBids = async (
             status: "Error",
             message: error.message,
         });
+    }
+};
+
+export const updateAuctionBid = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const { bidId } = req.params;
+
+        if (typeof bidId !== "string") {
+            return failResponse(
+                res,
+                "Invalid bid ID",
+                StatusCode.Bad_Request
+            );
+        }
+
+        const {
+            auctionId,
+            userId,
+            bidPrice,
+        } = req.body;
+
+        if (!auctionId || !userId || bidPrice === undefined) {
+            return failResponse(
+                res,
+                "auctionId, userId and bidPrice are required",
+                StatusCode.Bad_Request
+            );
+        }
+
+        const updatedBid     = await updateAuctionBidService(
+            bidId,
+            {
+                auctionId,
+                userId,
+                bidPrice: Number(bidPrice),
+            }
+        );
+
+        return successResponse(
+            res,
+            updatedBid,
+            "Auction bid updated successfully",
+            StatusCode.OK
+        );
+    } catch (err: any) {
+        return failResponse(
+            res,
+            err.message || Messages.Internal_Server_Error,
+            StatusCode.Bad_Request
+        );
     }
 };
