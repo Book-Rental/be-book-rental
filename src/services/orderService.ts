@@ -11,6 +11,8 @@ import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilte
 import { createReturnShipmentFromOrder, createShipmentFromOrder } from "../helper/shipmentHelper";
 import { sendEmail } from "./email.service";
 import { sendOrderStatusEmail, getShipmentEvent, getOutForDeliveryEvent, getDeliveredEvent } from "./orderEmail.service";
+import Transaction, { TransactionDirection, TransactionStatus, TransactionType } from "../models/Transaction";
+import { createTransaction } from "./transaction.service";
 const { compileTemplate } = require("../templates/template");
 
 //getAll Order
@@ -65,7 +67,77 @@ export const getOrderByOrderIdService = async (orderId: string) => {
     }
 };
 
-// //Create Order
+const createTransactionBreakup = (
+    orderItems: any[],
+    amount: any
+) => {
+    const totalItemBaseAmount = orderItems.reduce(
+        (sum: number, item: any) =>
+            sum +
+            Number(item.rental.rentalPrice) +
+            Number(item.deposit.amount),
+        0
+    );
+
+    const deliveryFee = Number(amount.deliveryFee) || 0;
+    const discount = Number(amount.discount) || 0;
+    const tax = Number(amount.tax) || 0;
+
+    let allocatedDeliveryFee = 0;
+    let allocatedDiscount = 0;
+    let allocatedTax = 0;
+
+    return orderItems.map((item: any, index: number) => {
+        const itemBaseAmount =
+            Number(item.rental.rentalPrice) +
+            Number(item.deposit.amount);
+
+        const ratio =
+            totalItemBaseAmount > 0
+                ? itemBaseAmount / totalItemBaseAmount
+                : 0;
+
+        const isLastItem = index === orderItems.length - 1;
+
+        // Give any rounding remainder to the last item
+        const itemDeliveryFee = isLastItem
+            ? deliveryFee - allocatedDeliveryFee
+            : Number((deliveryFee * ratio).toFixed(2));
+
+        const itemDiscount = isLastItem
+            ? discount - allocatedDiscount
+            : Number((discount * ratio).toFixed(2));
+
+        const itemTax = isLastItem
+            ? tax - allocatedTax
+            : Number((tax * ratio).toFixed(2));
+
+        allocatedDeliveryFee += itemDeliveryFee;
+        allocatedDiscount += itemDiscount;
+        allocatedTax += itemTax;
+
+        const itemTotalAmount =
+            itemBaseAmount +
+            itemDeliveryFee +
+            itemTax -
+            itemDiscount;
+
+        return {
+            orderItemId: item._id,
+            bookId: item.bookId,
+            sellerId: item.sellerId,
+
+            rentalAmount: Number(item.rental.rentalPrice),
+            securityDeposit: Number(item.deposit.amount),
+
+            deliveryFee: itemDeliveryFee,
+            discount: itemDiscount,
+            tax: itemTax,
+
+            totalAmount: Number(itemTotalAmount.toFixed(2)),
+        };
+    });
+};
 
 export const createOrderService = async (orderData: any) => {
     try {
@@ -260,6 +332,32 @@ export const createOrderService = async (orderData: any) => {
             isActive: true,
         });
 
+        if (!isCOD) {
+            const transactionBreakup = createTransactionBreakup(
+                order.items,
+                amount
+            );
+
+            await createTransaction({
+                transactionId: payment.transactionId,
+
+                orderId: order._id,
+
+                userId,
+
+                transactionType: TransactionType.PAYMENT,
+
+                totalAmount: calculatedTotal,
+
+                paymentMethod: payment.paymentMethod,
+
+                paymentStatus: TransactionStatus.SUCCESS,
+
+                gatewayTransactionId: payment.transactionId,
+
+                breakup: transactionBreakup,
+            });
+        }
         // ================= Get Created Order =================
 
         const createdOrder: any = await Order.findById(order._id)
@@ -1230,7 +1328,7 @@ export const updateOrderByIdService = async (
     orderId: string,
     updateData: any
 ) => {
- 
+
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -1501,9 +1599,9 @@ export const updateOrderByIdService = async (
 
         if (
             previousStatus !==
-                ItemStatus.OUT_FOR_DELIVERY &&
+            ItemStatus.OUT_FOR_DELIVERY &&
             item.itemStatus ===
-                ItemStatus.OUT_FOR_DELIVERY
+            ItemStatus.OUT_FOR_DELIVERY
         ) {
             await sendOrderStatusEmail(
                 order,
@@ -1522,7 +1620,7 @@ export const updateOrderByIdService = async (
     if (
         currentOutForDeliveryEvent &&
         currentOutForDeliveryEvent !==
-            previousOutForDeliveryEvent
+        previousOutForDeliveryEvent
     ) {
         const outForDeliveryItem =
             order.items.find((item: any) => {
@@ -1533,9 +1631,9 @@ export const updateOrderByIdService = async (
 
                 return (
                     previousStatus !==
-                        ItemStatus.OUT_FOR_DELIVERY &&
+                    ItemStatus.OUT_FOR_DELIVERY &&
                     item.itemStatus ===
-                        ItemStatus.OUT_FOR_DELIVERY
+                    ItemStatus.OUT_FOR_DELIVERY
                 );
             });
 
