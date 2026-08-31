@@ -7,6 +7,7 @@ import wishListRoutes from "./wishListRoutes";
 import cartRoutes from "./cartRoutes";
 import orderRoutes from "./orderRoutes";
 import auctionRoute from "./auctionRoute";
+import transactionRoutes from "./transactionRoutes";
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use("/wishList", wishListRoutes);
 router.use("/cart", cartRoutes);
 router.use("/order", orderRoutes);
 router.use("/auction", auctionRoute);
+router.use("/transaction",transactionRoutes);
 
 export default router;
