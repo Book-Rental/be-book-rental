@@ -383,7 +383,7 @@ export const createOrderService = async (orderData: any) => {
                     ? createdOrder.items[0].bookId._id.toString()
                     : createdOrder.items?.[0]?.bookId?.toString();
 
-                const trackingUrl = `https://fe-book-rental-host.onrender.com/order-details?orderId=${orderId}&bookId=${bookId}`;
+                const trackingUrl = `${process.env.FRONTEND_HOST}/order-details?orderId=${orderId}&bookId=${bookId}`;
 
                 const html = compileTemplate("orderConfirmationEmail.hbs", {
                     title: "Order Confirmation",
