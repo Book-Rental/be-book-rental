@@ -1,47 +1,42 @@
 import Auction, { AuctionStatus } from "../models/Auction";
 
-
 export const updateAuctionStatuses = async () => {
-    try {
-        const now = new Date();
+  try {
+    const now = new Date();
 
-        // 1. UPCOMING → LIVE
-        await Auction.updateMany(
+    await Auction.updateMany(
+      {
+        status: AuctionStatus.UPCOMING,
+        startDate: { $lte: now },
+      },
+      {
+        $set: { status: AuctionStatus.LIVE },
+      }
+    );
+
+    await Auction.updateMany(
+      {
+        status: AuctionStatus.LIVE,
+        $expr: {
+          $lte: [
             {
-                status: AuctionStatus.UPCOMING,
-                startDate: { $lte: now },
+              $dateAdd: {
+                startDate: "$startDate",
+                unit: "day",
+                amount: "$duration",
+              },
             },
-            {
-                $set: {
-                    status: AuctionStatus.LIVE,
-                },
-            }
-        );
+            now,
+          ],
+        },
+      },
+      {
+        $set: { status: AuctionStatus.COMPLETED },
+      }
+    );
 
-        // 2. LIVE → COMPLETED
-        const liveAuctions = await Auction.find({
-            status: AuctionStatus.LIVE,
-        });
-
-        for (const auction of liveAuctions) {
-            const endTime =
-                new Date(auction.startDate).getTime() +
-                auction.duration * 60 * 1000; // duration in minutes
-
-            if (now.getTime() >= endTime) {
-                await Auction.updateOne(
-                    { _id: auction._id },
-                    {
-                        $set: {
-                            status: AuctionStatus.COMPLETED,
-                        },
-                    }
-                );
-            }
-        }
-
-        console.log("Auction statuses updated successfully");
-    } catch (error) {
-        console.error("Error updating auction statuses:", error);
-    }
+    console.log("Auction statuses updated successfully");
+  } catch (error) {
+    console.error("Error updating auction statuses:", error);
+  }
 };
