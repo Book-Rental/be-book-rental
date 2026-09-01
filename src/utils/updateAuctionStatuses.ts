@@ -4,38 +4,60 @@ export const updateAuctionStatuses = async () => {
   try {
     const now = new Date();
 
-    await Auction.updateMany(
-      {
-        status: AuctionStatus.UPCOMING,
-        startDate: { $lte: now },
+    const auctions = await Auction.find({
+      status: {
+        $in: [AuctionStatus.UPCOMING, AuctionStatus.LIVE],
       },
-      {
-        $set: { status: AuctionStatus.LIVE },
-      }
-    );
+    });
 
-    await Auction.updateMany(
-      {
-        status: AuctionStatus.LIVE,
-        $expr: {
-          $lte: [
-            {
-              $dateAdd: {
-                startDate: "$startDate",
-                unit: "day",
-                amount: "$duration",
+    const bulkOperations = [];
+
+    for (const auction of auctions) {
+      const startDate = new Date(auction.startDate);
+
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + Number(auction.duration));
+
+      let newStatus: AuctionStatus | null = null;
+
+      // Auction has already ended
+      if (now >= endDate) {
+        newStatus = AuctionStatus.COMPLETED;
+      }
+
+      // Auction should currently be live
+      else if (now >= startDate) {
+        newStatus = AuctionStatus.LIVE;
+      }
+
+      // Still upcoming
+      else {
+        newStatus = AuctionStatus.UPCOMING;
+      }
+
+      if (auction.status !== newStatus) {
+        bulkOperations.push({
+          updateOne: {
+            filter: {
+              _id: auction._id,
+            },
+            update: {
+              $set: {
+                status: newStatus,
               },
             },
-            now,
-          ],
-        },
-      },
-      {
-        $set: { status: AuctionStatus.COMPLETED },
+          },
+        });
       }
-    );
+    }
 
-    console.log("Auction statuses updated successfully");
+    if (bulkOperations.length > 0) {
+      await Auction.bulkWrite(bulkOperations);
+    }
+
+    console.log(
+      `Auction statuses updated successfully. Updated: ${bulkOperations.length}`
+    );
   } catch (error) {
     console.error("Error updating auction statuses:", error);
   }

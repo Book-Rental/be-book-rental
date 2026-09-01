@@ -5,7 +5,7 @@ import connectDatabase from "./config/db";
 
 import http from "http";
 import mongoose from "mongoose";
-import { startAuctionCron } from "./cronJobs/auctionCron";
+// import { startAuctionCron } from "./cronJobs/auctionCron";
 export const server = http.createServer(app);
 
 export const PORT = process.env.PORT || 5000;
@@ -13,7 +13,7 @@ export const PORT = process.env.PORT || 5000;
 export const startServer = async () => {
     try {
         await connectDatabase();
-        startAuctionCron(); 
+        // startAuctionCron(); 
         server.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
         });
