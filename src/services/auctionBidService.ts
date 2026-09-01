@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Auction, { AuctionStatus } from "../models/Auction";
 import AuctionBid from "../models/AuctionBid";
+import Book from "../models/Book";
 
 
 export const createAuctionBidService = async (data: {
@@ -14,31 +15,33 @@ export const createAuctionBidService = async (data: {
     try {
         session.startTransaction();
 
-        const auction = await Auction.findById(
-            data.auctionId
-        ).session(session);
+        // 1. Get auction using bookId
+        const auction = await Auction.findOne({
+            bookId: data.bookId,
+        }).session(session);
 
         if (!auction) {
-            throw new Error("Auction not found");
+            throw new Error("Auction not found for this book");
         }
 
+        // 2. Check auction status
         if (auction.status !== AuctionStatus.LIVE) {
             throw new Error(
-                "Bidding is available only for live auctions"
+                `Bidding is available only for live auctions. Current status: ${auction.status}`
             );
         }
 
-        if (
-            auction.bookId.toString() !==
-            data.bookId.toString()
-        ) {
-            throw new Error(
-                "Book does not belong to this auction"
-            );
+        // 3. Get book
+        const book = await Book.findById(data.bookId)
+            .session(session);
+
+        if (!book) {
+            throw new Error("Book not found");
         }
 
+        // 4. Check existing bid
         const existingBid = await AuctionBid.findOne({
-            auctionId: data.auctionId,
+            auctionId: auction._id,
             userId: data.userId,
         }).session(session);
 
@@ -48,33 +51,29 @@ export const createAuctionBidService = async (data: {
             );
         }
 
+        // 5. Get highest bid
         const highestBid = await AuctionBid.findOne({
-            auctionId: data.auctionId,
+            auctionId: auction._id,
         })
             .sort({ bidPrice: -1 })
             .session(session);
 
-        if (!highestBid) {
-            if (data.bidPrice <= auction.bidPrice) {
-                throw new Error(
-                    `Bid price must be greater than the starting bid price of ${auction.bidPrice}`
-                );
-            }
-        }
+        // 6. Validate bid
+        const minimumBid = highestBid
+            ? highestBid.bidPrice
+            : auction.bidPrice;
 
-        if (
-            highestBid &&
-            data.bidPrice <= highestBid.bidPrice
-        ) {
+        if (data.bidPrice <= minimumBid) {
             throw new Error(
-                `Bid price must be greater than the current highest bid of ${highestBid.bidPrice}`
+                `Bid price must be greater than ${minimumBid}`
             );
         }
 
+        // 7. Create bid
         const bid = await AuctionBid.create(
             [
                 {
-                    auctionId: data.auctionId,
+                    auctionId: auction._id,
                     bookId: data.bookId,
                     userId: data.userId,
                     bidPrice: data.bidPrice,
@@ -83,9 +82,11 @@ export const createAuctionBidService = async (data: {
             { session }
         );
 
+        // 8. Commit
         await session.commitTransaction();
 
         return bid[0];
+
     } catch (error) {
         await session.abortTransaction();
         throw error;
