@@ -94,10 +94,16 @@ export const createAuctionBidService = async (data: {
 
     return bid;
 };
+
 export const getAllAuctionBidsService = async (
     auctionId: string
 ) => {
-    const auction = await Auction.findById(auctionId);
+    const auction = await Auction.findById(auctionId)
+        .populate(
+            "bookId",
+            "name description imageUrl author price category"
+        )
+        .lean();
 
     if (!auction) {
         throw new Error("Auction not found");
@@ -106,14 +112,37 @@ export const getAllAuctionBidsService = async (
     const bids = await AuctionBid.find({
         auctionId,
     })
-        .populate("userId", "firstName lastName")
+        .populate(
+            "userId",
+            "firstName lastName email addresses"
+        )
         .sort({ bidPrice: -1 })
         .lean();
 
     return {
-        auctionId,
+        auction: {
+            _id: auction._id,
+            bookId: auction.bookId,
+            bidPrice: auction.bidPrice,
+            buyNowPrice: auction.buyNowPrice,
+            duration: auction.duration,
+            startDate: auction.startDate,
+        },
+
+        book: auction.bookId,
+
         bids: bids.map((bid) => {
             const user = bid.userId as any;
+
+            const defaultAddress =
+                user?.addresses?.find(
+                    (address: any) =>
+                        address.isDefault
+                );
+
+            const address =
+                defaultAddress ??
+                user?.addresses?.[0];
 
             return {
                 _id: bid._id,
@@ -123,6 +152,8 @@ export const getAllAuctionBidsService = async (
                     name: `${user?.firstName ?? ""} ${
                         user?.lastName ?? ""
                     }`.trim(),
+                    email: user?.email ?? "",
+                    phone: address?.phone ?? "",
                 },
 
                 bidPrice: bid.bidPrice,
@@ -130,7 +161,6 @@ export const getAllAuctionBidsService = async (
         }),
     };
 };
-
 
 export const updateAuctionBidService = async (
     bidId: string,
