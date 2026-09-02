@@ -36,11 +36,7 @@ const auctionSchema = new Schema<IAuction>(
             type: Date,
             required: true,
         },
-        status: {
-            type: String,
-            enum: Object.values(AuctionStatus),
-            default: AuctionStatus.UPCOMING,
-        },
+        
     },
     {
         _id: true,

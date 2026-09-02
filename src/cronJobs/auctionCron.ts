@@ -1,14 +1,14 @@
 import cron from "node-cron";
-import { updateAuctionStatuses } from "../utils/updateAuctionStatuses";
+// import { updateAuctionStatuses } from "../utils/updateAuctionStatuses";
 
 
-export const startAuctionCron = () => {
-    // Runs every minute
-    cron.schedule("* * * * *", async () => {
-        console.log("Running auction status cron...");
+// export const startAuctionCron = () => {
+//     // Runs every minute
+//     cron.schedule("* * * * *", async () => {
+//         console.log("Running auction status cron...");
 
-        await updateAuctionStatuses();
-    });
+//         await updateAuctionStatuses();
+//     });
 
-    console.log("Auction status cron started");
-};
+//     console.log("Auction status cron started");
+// };
