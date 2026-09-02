@@ -1,20 +1,31 @@
-import { AuctionStatus } from "../models/Auction";
+export enum AuctionStatus {
+    UPCOMING = "upcoming",
+    LIVE = "live",
+    COMPLETED = "completed",
+    CANCELLED = "cancelled",
+}
 
 export const calculateAuctionStatus = (
-  startDate: Date | string,
-  duration: number
+    startDate: Date | string,
+    duration: number
 ): AuctionStatus => {
-  const now = new Date();
-  const start = new Date(startDate);
+    const now = new Date();
 
-  if (now < start) {
-    return AuctionStatus.UPCOMING;
-  }
-  const end = new Date(start);
-  end.setDate(end.getDate() + duration);
+    const start = new Date(startDate);
 
-  if (now < end) {
-    return AuctionStatus.LIVE;
-  }
-  return AuctionStatus.COMPLETED;
+    const end = new Date(start);
+
+    end.setDate(
+        end.getDate() + Number(duration)
+    );
+
+    if (now < start) {
+        return AuctionStatus.UPCOMING;
+    }
+
+    if (now < end) {
+        return AuctionStatus.LIVE;
+    }
+
+    return AuctionStatus.COMPLETED;
 };

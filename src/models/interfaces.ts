@@ -79,5 +79,4 @@ export interface IAuction {
     duration: number;
     startDate: Date; 
     bookId: Types.ObjectId;
-    status: AuctionStatus;
 }

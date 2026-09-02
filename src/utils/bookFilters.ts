@@ -290,14 +290,12 @@ export const buildPaginationMeta = (totalRecords: number, page: number, limit: n
     };
 };
 
-//  * Build Aggregation Pipeline
 export const buildBookAggregationPipeline = async (
     filterQuery: any,
     sortBy?: string,
     page: number = 1,
     limit: number = 10
 ): Promise<PipelineStage[]> => {
-
     const filter = await buildFilter(filterQuery);
 
     const sortOption = getSortOption(sortBy);
@@ -309,22 +307,24 @@ export const buildBookAggregationPipeline = async (
 
     const { status } = filterQuery;
 
-    const auctionStatuses =
-        status
-            ?.split(",")
-            .map((item: string) =>
-                item.trim().toLowerCase()
-            )
-            .filter(Boolean);
+    const auctionStatuses = status
+        ?.split(",")
+        .map((item: string) =>
+            item.trim().toLowerCase()
+        )
+        .filter(Boolean);
 
     const pipeline: PipelineStage[] = [
-
-        // Book filters
+        // --------------------------------------------------
+        // Book filter
+        // --------------------------------------------------
         {
             $match: filter,
         },
 
+        // --------------------------------------------------
         // Category lookup
+        // --------------------------------------------------
         {
             $lookup: {
                 from: "categories",
@@ -341,7 +341,9 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
+        // --------------------------------------------------
         // Auction lookup
+        // --------------------------------------------------
         {
             $lookup: {
                 from: "auctions",
@@ -358,12 +360,68 @@ export const buildBookAggregationPipeline = async (
             },
         },
 
+        // --------------------------------------------------
+        // Calculate auction status
+        // --------------------------------------------------
+        {
+            $addFields: {
+                "auction.calculatedStatus": {
+                    $cond: [
+                        {
+                            $not: ["$auction._id"],
+                        },
+                        null,
+                        {
+                            $switch: {
+                                branches: [
+                                    {
+                                        // UPCOMING
+                                        case: {
+                                            $gt: [
+                                                "$auction.startDate",
+                                                "$$NOW",
+                                            ],
+                                        },
+                                        then: "upcoming",
+                                    },
+
+                                    {
+                                        // LIVE
+                                        case: {
+                                            $lt: [
+                                                "$$NOW",
+                                                {
+                                                    $dateAdd: {
+                                                        startDate:
+                                                            "$auction.startDate",
+                                                        unit: "day",
+                                                        amount:
+                                                            "$auction.duration",
+                                                    },
+                                                },
+                                            ],
+                                        },
+                                        then: "live",
+                                    },
+                                ],
+
+                                // COMPLETED
+                                default: "completed",
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+
+        // --------------------------------------------------
         // Auction status filter
+        // --------------------------------------------------
         ...(auctionStatuses?.length
             ? [
                   {
                       $match: {
-                          "auction.status": {
+                          "auction.calculatedStatus": {
                               $in: auctionStatuses,
                           },
                       },
@@ -371,13 +429,17 @@ export const buildBookAggregationPipeline = async (
               ]
             : []),
 
-        // Highest bid lookup
+        // --------------------------------------------------
+        // Get auction bid details
+        // --------------------------------------------------
         {
             $lookup: {
                 from: "auctionbids",
+
                 let: {
                     auctionId: "$auction._id",
                 },
+
                 pipeline: [
                     {
                         $match: {
@@ -389,26 +451,48 @@ export const buildBookAggregationPipeline = async (
                             },
                         },
                     },
+
                     {
-                        $sort: {
-                            bidPrice: -1,
+                        $facet: {
+                            // Highest bid
+                            highestBid: [
+                                {
+                                    $sort: {
+                                        bidPrice: -1,
+                                    },
+                                },
+                                {
+                                    $limit: 1,
+                                },
+                            ],
+
+                            // Total number of bids
+                            bidCount: [
+                                {
+                                    $count: "count",
+                                },
+                            ],
                         },
                     },
-                    {
-                        $limit: 1,
-                    },
                 ],
-                as: "highestBid",
+
+                as: "auctionBidDetails",
             },
         },
 
+        // --------------------------------------------------
+        // Unwind bid details
+        // --------------------------------------------------
         {
             $unwind: {
-                path: "$highestBid",
+                path: "$auctionBidDetails",
                 preserveNullAndEmptyArrays: true,
             },
         },
 
+        // --------------------------------------------------
+        // Build response
+        // --------------------------------------------------
         {
             $addFields: {
                 category: {
@@ -424,30 +508,58 @@ export const buildBookAggregationPipeline = async (
                                 true,
                             ],
                         },
+
                         {
                             $mergeObjects: [
                                 "$auction",
+
                                 {
+                                    // Auction status
+                                    status: "$auction.calculatedStatus",
+
+                                    // Current highest bid
                                     currentBidPrice: {
                                         $ifNull: [
-                                            "$highestBid.bidPrice",
+                                            {
+                                                $arrayElemAt: [
+                                                    "$auctionBidDetails.highestBid.bidPrice",
+                                                    0,
+                                                ],
+                                            },
                                             "$auction.bidPrice",
+                                        ],
+                                    },
+
+                                    // Number of bids
+                                    bidCount: {
+                                        $ifNull: [
+                                            {
+                                                $arrayElemAt: [
+                                                    "$auctionBidDetails.bidCount.count",
+                                                    0,
+                                                ],
+                                            },
+                                            0,
                                         ],
                                     },
                                 },
                             ],
                         },
+
                         null,
                     ],
                 },
             },
         },
 
+        // --------------------------------------------------
+        // Remove unwanted fields
+        // --------------------------------------------------
         {
             $project: {
                 __v: 0,
                 categoryId: 0,
-                highestBid: 0,
+                auctionBidDetails: 0,
 
                 "category.__v": 0,
                 "category.createdAt": 0,
@@ -456,13 +568,20 @@ export const buildBookAggregationPipeline = async (
                 "auction.__v": 0,
                 "auction.createdAt": 0,
                 "auction.updatedAt": 0,
+                "auction.calculatedStatus": 0,
             },
         },
 
+        // --------------------------------------------------
+        // Sort
+        // --------------------------------------------------
         {
             $sort: sortOption,
         },
 
+        // --------------------------------------------------
+        // Pagination
+        // --------------------------------------------------
         {
             $skip: skip,
         },
@@ -475,6 +594,8 @@ export const buildBookAggregationPipeline = async (
     return pipeline;
 };
 
+
+// Build Count Aggregation Pipeline
 export const buildBookCountAggregationPipeline = async (
     filterQuery: any
 ): Promise<PipelineStage[]> => {
@@ -515,12 +636,64 @@ export const buildBookCountAggregationPipeline = async (
             },
         },
 
-        // Apply Auction status filter
+        // Calculate auction status dynamically
+        {
+            $addFields: {
+                "auction.calculatedStatus": {
+                    $cond: [
+                        {
+                            $not: ["$auction._id"],
+                        },
+                        null,
+                        {
+                            $switch: {
+                                branches: [
+                                    {
+                                        // UPCOMING
+                                        case: {
+                                            $gt: [
+                                                "$auction.startDate",
+                                                "$$NOW",
+                                            ],
+                                        },
+                                        then: "upcoming",
+                                    },
+
+                                    {
+                                        // LIVE
+                                        case: {
+                                            $lt: [
+                                                "$$NOW",
+                                                {
+                                                    $dateAdd: {
+                                                        startDate:
+                                                            "$auction.startDate",
+                                                        unit: "day",
+                                                        amount:
+                                                            "$auction.duration",
+                                                    },
+                                                },
+                                            ],
+                                        },
+                                        then: "live",
+                                    },
+                                ],
+
+                                // COMPLETED
+                                default: "completed",
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+
+        // Apply auction status filter
         ...(auctionStatuses?.length
             ? [
                   {
                       $match: {
-                          "auction.status": {
+                          "auction.calculatedStatus": {
                               $in: auctionStatuses,
                           },
                       },

@@ -47,6 +47,7 @@ export const createAuctionBid = async (
             bidPrice === undefined ||
             bidPrice === null ||
             typeof bidPrice !== "number" ||
+            Number.isNaN(bidPrice) ||
             bidPrice <= 0
         ) {
             return res.status(400).json({
@@ -72,7 +73,7 @@ export const createAuctionBid = async (
 
         return res.status(400).json({
             status: "Error",
-            message: error.message,
+            message: error.message || "Failed to place bid",
         });
     }
 };
