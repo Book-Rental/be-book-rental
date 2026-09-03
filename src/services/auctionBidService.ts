@@ -96,7 +96,9 @@ export const createAuctionBidService = async (data: {
 };
 
 export const getAllAuctionBidsService = async (
-    auctionId: string
+    auctionId: string,
+    page = 1,
+    limit = 10
 ) => {
     const auction = await Auction.findById(auctionId)
         .populate(
@@ -109,57 +111,92 @@ export const getAllAuctionBidsService = async (
         throw new Error("Auction not found");
     }
 
-    const bids = await AuctionBid.find({
-        auctionId,
-    })
-        .populate(
-            "userId",
-            "firstName lastName email addresses"
-        )
-        .sort({ bidPrice: -1 })
-        .lean();
+    const pageNumber = Math.max(Number(page), 1);
+    const limitNumber = Math.max(Number(limit), 1);
+    const skip = (pageNumber - 1) * limitNumber;
 
-    return {
-        auction: {
-            _id: auction._id,
-            bookId: auction.bookId,
-            bidPrice: auction.bidPrice,
-            buyNowPrice: auction.buyNowPrice,
-            duration: auction.duration,
-            startDate: auction.startDate,
-        },
+    const [bids, total] = await Promise.all([
+        AuctionBid.find({
+            auctionId,
+        })
+            .populate(
+                "userId",
+                "firstName lastName email addresses"
+            )
+            .sort({
+                bidPrice: -1,
+                createdAt: 1,
+            })
+            .skip(skip)
+            .limit(limitNumber)
+            .lean(),
 
-        book: auction.bookId,
-
-        bids: bids.map((bid) => {
-            const user = bid.userId as any;
-
-            const defaultAddress =
-                user?.addresses?.find(
-                    (address: any) =>
-                        address.isDefault
-                );
-
-            const address =
-                defaultAddress ??
-                user?.addresses?.[0];
-
-            return {
-                _id: bid._id,
-
-                user: {
-                    userId: user?._id,
-                    name: `${user?.firstName ?? ""} ${
-                        user?.lastName ?? ""
-                    }`.trim(),
-                    email: user?.email ?? "",
-                    phone: address?.phone ?? "",
-                },
-
-                bidPrice: bid.bidPrice,
-            };
+        AuctionBid.countDocuments({
+            auctionId,
         }),
-    };
+    ]);
+
+    const currentBidPrice =
+        bids.length > 0
+            ? bids[0].bidPrice
+            : auction.bidPrice;
+const book = auction.bookId as any;
+   return {
+    auction: {
+        _id: auction._id,
+        bookId: book._id,
+        bidPrice: auction.bidPrice,
+        buyNowPrice: auction.buyNowPrice,
+        duration: auction.duration,
+        startDate: auction.startDate,
+        currentBidPrice,
+    },
+
+    book: book,
+
+    bids: bids.map((bid, index) => {
+        const user = bid.userId as any;
+
+        const defaultAddress =
+            user?.addresses?.find(
+                (address: any) => address.isDefault
+            );
+
+        const address =
+            defaultAddress ??
+            user?.addresses?.[0];
+
+        return {
+            _id: bid._id,
+
+            rank: skip + index + 1,
+
+            user: {
+                userId: user?._id,
+                name: `${user?.firstName ?? ""} ${
+                    user?.lastName ?? ""
+                }`.trim(),
+                email: user?.email ?? "",
+                phone: address?.phone ?? "",
+            },
+
+            bidPrice: bid.bidPrice,
+        };
+    }),
+
+    pagination: {
+        page: pageNumber,
+        limit: limitNumber,
+        total,
+        totalPages: Math.ceil(
+            total / limitNumber
+        ),
+        hasNextPage:
+            pageNumber <
+            Math.ceil(total / limitNumber),
+        hasPreviousPage: pageNumber > 1,
+    },
+};
 };
 
 export const updateAuctionBidService = async (
@@ -248,8 +285,15 @@ export const updateAuctionBidService = async (
 
 
 export const getAllUserBidsService = async (
-    userId: string
+    userId: string,
+    page = 1,
+    limit = 10,
+    bidStatus?: string
 ) => {
+    const pageNumber = Math.max(Number(page), 1);
+    const limitNumber = Math.max(Number(limit), 1);
+    const skip = (pageNumber - 1) * limitNumber;
+
     const bids = await AuctionBid.find({
         userId,
     })
@@ -258,7 +302,7 @@ export const getAllUserBidsService = async (
         .sort({ createdAt: -1 })
         .lean();
 
-    return Promise.all(
+    const results = await Promise.all(
         bids.map(async (bid) => {
             const auction = bid.auctionId as any;
             const book = bid.bookId as any;
@@ -267,7 +311,7 @@ export const getAllUserBidsService = async (
                 auctionId: auction._id,
             })
                 .sort({ bidPrice: -1 })
-                .select("bidPrice")
+                .select("bidPrice userId")
                 .lean();
 
             const status = calculateAuctionStatus(
@@ -275,12 +319,40 @@ export const getAllUserBidsService = async (
                 auction.duration
             );
 
+            const isHighestBidder =
+                highestBid?.userId?.toString() === userId;
+
+            let calculatedBidStatus: string;
+
+            switch (status) {
+                case AuctionStatus.UPCOMING:
+                    calculatedBidStatus = "upcoming";
+                    break;
+
+                case AuctionStatus.LIVE:
+                    calculatedBidStatus = isHighestBidder
+                        ? "winning"
+                        : "outbid";
+                    break;
+
+                case AuctionStatus.COMPLETED:
+                    calculatedBidStatus = isHighestBidder
+                        ? "won"
+                        : "lost";
+                    break;
+
+                case AuctionStatus.CANCELLED:
+                    calculatedBidStatus = "cancelled";
+                    break;
+
+                default:
+                    calculatedBidStatus = "unknown";
+            }
+
             return {
                 auction: {
                     ...auction,
-
                     status,
-
                     currentBidPrice:
                         highestBid?.bidPrice ??
                         auction.bidPrice,
@@ -295,8 +367,43 @@ export const getAllUserBidsService = async (
                 bid: {
                     bidId: bid._id,
                     bidPrice: bid.bidPrice,
+                    bidStatus: calculatedBidStatus,
                 },
             };
         })
     );
+
+    // Filter by bid status
+    const filteredResults = bidStatus
+        ? results.filter(
+              (item) =>
+                  item.bid.bidStatus === bidStatus
+          )
+        : results;
+
+    // Total after filtering
+    const total = filteredResults.length;
+
+    // Pagination
+    const paginatedResults = filteredResults.slice(
+        skip,
+        skip + limitNumber
+    );
+
+    return {
+        data: paginatedResults,
+
+        pagination: {
+            page: pageNumber,
+            limit: limitNumber,
+            total,
+            totalPages: Math.ceil(
+                total / limitNumber
+            ),
+            hasNextPage:
+                pageNumber <
+                Math.ceil(total / limitNumber),
+            hasPreviousPage: pageNumber > 1,
+        },
+    };
 };
