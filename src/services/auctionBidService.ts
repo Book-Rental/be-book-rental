@@ -103,7 +103,7 @@ export const getAllAuctionBidsService = async (
     const auction = await Auction.findById(auctionId)
         .populate(
             "bookId",
-            "name description imageUrl author price category"
+            "name description coverImage author price category"
         )
         .lean();
 
