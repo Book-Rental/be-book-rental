@@ -85,6 +85,11 @@ export const getAllAuctionBids = async (
     try {
         const { auctionId } = req.params;
 
+        const {
+            page = "1",
+            limit = "10",
+        } = req.query;
+
         if (
             typeof auctionId !== "string" ||
             !mongoose.Types.ObjectId.isValid(auctionId)
@@ -95,14 +100,39 @@ export const getAllAuctionBids = async (
             });
         }
 
-        const bids = await getAllAuctionBidsService(
-            auctionId
+        const pageNumber = Number(page);
+        const limitNumber = Number(limit);
+
+        if (
+            !Number.isInteger(pageNumber) ||
+            pageNumber < 1
+        ) {
+            return res.status(400).json({
+                status: "Error",
+                message: "Invalid page number",
+            });
+        }
+
+        if (
+            !Number.isInteger(limitNumber) ||
+            limitNumber < 1
+        ) {
+            return res.status(400).json({
+                status: "Error",
+                message: "Invalid limit",
+            });
+        }
+
+        const result = await getAllAuctionBidsService(
+            auctionId,
+            pageNumber,
+            limitNumber
         );
 
         return res.status(200).json({
             status: "Success",
             message: "Auction bids fetched successfully",
-            data: bids,
+            data: result,
         });
     } catch (error: any) {
         console.error(
@@ -124,6 +154,12 @@ export const getAllUserBids = async (
     try {
         const { userId } = req.params;
 
+        const {
+            page = "1",
+            limit = "10",
+            status,
+        } = req.query;
+
         if (
             typeof userId !== "string" ||
             !mongoose.Types.ObjectId.isValid(userId)
@@ -134,12 +170,47 @@ export const getAllUserBids = async (
             });
         }
 
-        const bids = await getAllUserBidsService(userId);
+        const pageNumber = Number(page);
+        const limitNumber = Number(limit);
+
+        if (
+            !Number.isInteger(pageNumber) ||
+            pageNumber < 1
+        ) {
+            return res.status(400).json({
+                status: "Error",
+                message: "Invalid page number",
+            });
+        }
+
+        if (
+            !Number.isInteger(limitNumber) ||
+            limitNumber < 1
+        ) {
+            return res.status(400).json({
+                status: "Error",
+                message: "Invalid limit",
+            });
+        }
+
+        const bidStatus =
+            typeof status === "string"
+                ? status
+                : undefined;
+
+        const result =
+            await getAllUserBidsService(
+                userId,
+                pageNumber,
+                limitNumber,
+                bidStatus
+            );
 
         return res.status(200).json({
             status: "Success",
             message: "User bids fetched successfully",
-            data: bids,
+            data: result.data,
+            pagination: result.pagination,
         });
     } catch (error: any) {
         console.error(
