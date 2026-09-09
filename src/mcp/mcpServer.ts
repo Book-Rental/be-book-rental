@@ -50,15 +50,15 @@ export const createMcpServer = () => {
 
       try {
 
-        const baseUrl =
-          process.env.BACKEND_URL ||
-          "http://localhost:3000";
+    const baseUrl = process.env.BASE_URL;
 
-        const url =
-          new URL(
-            `${baseUrl}${path}`
-          );
+if (!baseUrl) {
+    throw new Error("BASE_URL is not configured");
+}
 
+const url = new URL(
+    `${baseUrl}${path}`
+);
         /*
          * Query parameters
          */
