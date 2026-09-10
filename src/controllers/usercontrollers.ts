@@ -29,7 +29,7 @@ export interface UserQuery {
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
     try {
         const users = await getAllUsersService(req.query as any);
-        successResponse(res, users, "", StatusCode.OK);
+        successResponse(res, users, Messages.Users_Fetched, StatusCode.OK);
     } catch (error: any) {
         failResponse(res, error?.message || error, StatusCode.Bad_Request);
     }
@@ -291,7 +291,6 @@ export const getAddressById = async (req: Request, res: Response): Promise<void>
     }
 };
 
-
 export const validateAddress = async (req: Request, res: Response): Promise<void> => {
     try {
         const { pincode } = req.body;
@@ -301,18 +300,21 @@ export const validateAddress = async (req: Request, res: Response): Promise<void
             return;
         }
 
-
         // 2. Call the standalone service function
         const isPincodeValid = await checkExternalPincodeService(pincode);
 
         if (!isPincodeValid) {
-            successResponse(res, { isValid: false }, "Provided pincode is not serviceable.", StatusCode.OK);
+            successResponse(
+                res,
+                { isValid: false },
+                "Provided pincode is not serviceable.",
+                StatusCode.OK
+            );
             return;
         }
         // 3. Return success if valid
         successResponse(res, { isValid: true }, "Address is valid.", StatusCode.OK);
-
     } catch (err: any) {
         failResponse(res, err.message || "Unable to validate address.", StatusCode.Bad_Request);
     }
-}
+};
