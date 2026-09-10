@@ -1,6 +1,19 @@
 import { model, Schema, Types } from "mongoose";
 import { addressSchema } from "./User";
 
+/* =========================================================
+   ORDER TYPE
+========================================================= */
+
+export enum OrderType {
+    BUY = "buy",
+    RENT = "rent",
+    AUCTION = "auction",
+}
+
+/* =========================================================
+   RENTAL
+========================================================= */
 
 export const RentalSchema = new Schema(
     {
@@ -18,7 +31,7 @@ export const RentalSchema = new Schema(
 
         rentalDuration: {
             type: Number,
-            required: true, // Number of days
+            required: true,
             min: 1,
         },
 
@@ -64,6 +77,10 @@ export const RentalSchema = new Schema(
         _id: false,
     }
 );
+
+/* =========================================================
+   DEPOSIT
+========================================================= */
 
 export enum DepositStatus {
     PENDING = "pending",
@@ -115,6 +132,10 @@ export const DepositSchema = new Schema(
     }
 );
 
+/* =========================================================
+   PAYMENT
+========================================================= */
+
 export enum PaymentStatus {
     PENDING = "pending",
     SUCCESS = "success",
@@ -150,8 +171,12 @@ export const PaymentSchema = new Schema(
             trim: true,
 
             required: function (this: any) {
-                return this.paymentMethod !== "COD" && this.paymentMethod !== "CASH";
+                return (
+                    this.paymentMethod !== PaymentMethod.COD &&
+                    this.paymentMethod !== PaymentMethod.CASH
+                );
             },
+
             default: null,
         },
 
@@ -165,9 +190,19 @@ export const PaymentSchema = new Schema(
     }
 );
 
+/* =========================================================
+   AMOUNT
+========================================================= */
+
 export const AmountSchema = new Schema(
     {
-        rentalAmount: {
+        /**
+         * For:
+         * BUY      -> normal book price
+         * RENT     -> rental price
+         * AUCTION  -> winning bid amount
+         */
+        itemAmount: {
             type: Number,
             required: true,
             min: 0,
@@ -175,7 +210,7 @@ export const AmountSchema = new Schema(
 
         securityDeposit: {
             type: Number,
-            required: true,
+            default: 0,
             min: 0,
         },
 
@@ -214,24 +249,38 @@ export const AmountSchema = new Schema(
     }
 );
 
+/* =========================================================
+   ITEM STATUS
+========================================================= */
+
 export enum ItemStatus {
     PENDING = "pending",
     CONFIRMED = "confirmed",
     SHIPPED = "shipped",
     OUT_FOR_DELIVERY = "out_for_delivery",
     DELIVERED = "delivered",
+
     RETURN_REQUESTED = "return_requested",
     RETURN_IN_PROGRESS = "return_in_progress",
     RETURNED = "returned",
+
     CANCELLED = "cancelled",
     REJECTED = "rejected",
 }
+
+/* =========================================================
+   SHIPMENT TYPE
+========================================================= */
 
 export enum ShipmentType {
     FORWARD = "Forward",
     RETURN = "Return",
     EXCHANGE = "Exchange",
 }
+
+/* =========================================================
+   SHIPMENT REFERENCE
+========================================================= */
 
 export const ShipmentReferenceSchema = new Schema(
     {
@@ -263,6 +312,69 @@ export const ShipmentReferenceSchema = new Schema(
         _id: false,
     }
 );
+
+/* =========================================================
+   AUCTION ORDER DETAILS
+========================================================= */
+
+export const AuctionOrderSchema = new Schema(
+    {
+        /**
+         * Reference to the Auction document
+         */
+        auctionId: {
+            type: Types.ObjectId,
+            ref: "Auction",
+            required: true,
+        },
+
+        /**
+         * Reference to the winning Bid document
+         */
+        winningBidId: {
+            type: Types.ObjectId,
+            ref: "Bid",
+            required: true,
+        },
+
+        /**
+         * Store the winning amount at the time
+         * the order is created.
+         *
+         * Do NOT depend only on Bid.amount later.
+         */
+        winningBidAmount: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        /**
+         * User who won the auction
+         */
+        winnerId: {
+            type: Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+
+        /**
+         * When the auction was won
+         */
+        wonAt: {
+            type: Date,
+            required: true,
+        },
+    },
+    {
+        _id: false,
+    }
+);
+
+/* =========================================================
+   ORDER ITEM
+========================================================= */
+
 export const OrderItemSchema = new Schema(
     {
         bookId: {
@@ -289,15 +401,32 @@ export const OrderItemSchema = new Schema(
             default: ItemStatus.PENDING,
         },
 
+        /**
+         * Rental is optional now.
+         *
+         * Required for RENT orders by service/business logic.
+         * Not applicable for BUY/AUCTION.
+         */
         rental: {
             type: RentalSchema,
-            required: true,
+            default: null,
         },
 
+        /**
+         * Deposit is optional because:
+         *
+         * BUY      -> normally no deposit
+         * AUCTION  -> normally no deposit
+         * RENT     -> deposit required
+         */
         deposit: {
             type: DepositSchema,
-            required: true,
+            default: null,
         },
+
+        /**
+         * Shipment references
+         */
         shipmentDetails: {
             type: [ShipmentReferenceSchema],
             default: [],
@@ -308,20 +437,34 @@ export const OrderItemSchema = new Schema(
     }
 );
 
+/* =========================================================
+   ORDER STATUS
+========================================================= */
+
 export enum OrderStatus {
     PENDING = "pending",
     CONFIRMED = "confirmed",
     SHIPPED = "shipped",
     DELIVERED = "delivered",
     OUT_FOR_DELIVERY = "out_for_delivery",
+
     RETURN_REQUESTED = "return_requested",
     RETURN_IN_PROGRESS = "return_in_progress",
     RETURNED = "returned",
+
     CANCELLED = "cancelled",
 }
 
+/* =========================================================
+   ORDER SCHEMA
+========================================================= */
+
 const OrderSchema = new Schema(
     {
+        /* -------------------------------------------------
+           ORDER NUMBER
+        ------------------------------------------------- */
+
         orderNumber: {
             type: String,
             required: true,
@@ -329,40 +472,90 @@ const OrderSchema = new Schema(
             trim: true,
         },
 
+        /* -------------------------------------------------
+           ORDER TYPE
+        ------------------------------------------------- */
+
+        orderType: {
+            type: String,
+            enum: Object.values(OrderType),
+            required: true,
+            default: OrderType.BUY,
+        },
+
+        /* -------------------------------------------------
+           USER
+        ------------------------------------------------- */
+
         userId: {
             type: Types.ObjectId,
             ref: "User",
             required: true,
         },
 
+        /* -------------------------------------------------
+           ORDER ITEMS
+        ------------------------------------------------- */
+
         items: {
             type: [OrderItemSchema],
+
             required: true,
+
             validate: {
                 validator: (items: any[]) => items.length > 0,
                 message: "Order should contain at least one book.",
             },
         },
 
+        /* -------------------------------------------------
+           AUCTION DETAILS
+        ------------------------------------------------- */
+
+        auctionDetails: {
+            type: AuctionOrderSchema,
+            default: null,
+        },
+
+        /* -------------------------------------------------
+           SHIPPING ADDRESS
+        ------------------------------------------------- */
+
         shippingAddress: {
             type: addressSchema,
             required: true,
         },
+
+        /* -------------------------------------------------
+           BILLING ADDRESS
+        ------------------------------------------------- */
 
         billingAddress: {
             type: addressSchema,
             required: true,
         },
 
+        /* -------------------------------------------------
+           PAYMENT
+        ------------------------------------------------- */
+
         payment: {
             type: PaymentSchema,
             required: true,
         },
 
+        /* -------------------------------------------------
+           AMOUNT
+        ------------------------------------------------- */
+
         amount: {
             type: AmountSchema,
             required: true,
         },
+
+        /* -------------------------------------------------
+           ORDER STATUS
+        ------------------------------------------------- */
 
         orderStatus: {
             type: String,
@@ -370,15 +563,27 @@ const OrderSchema = new Schema(
             default: OrderStatus.PENDING,
         },
 
+        /* -------------------------------------------------
+           CREATED BY
+        ------------------------------------------------- */
+
         createdBy: {
             type: Types.ObjectId,
             ref: "User",
         },
 
+        /* -------------------------------------------------
+           UPDATED BY
+        ------------------------------------------------- */
+
         updatedBy: {
             type: Types.ObjectId,
             ref: "User",
         },
+
+        /* -------------------------------------------------
+           ACTIVE
+        ------------------------------------------------- */
 
         isActive: {
             type: Boolean,
@@ -390,11 +595,45 @@ const OrderSchema = new Schema(
     }
 );
 
-/* ---------------- Indexes ---------------- */
+/* =========================================================
+   INDEXES
+========================================================= */
 
 OrderSchema.index({ orderNumber: 1 });
-OrderSchema.index({ userId: 1, createdAt: -1 });
-OrderSchema.index({ orderStatus: 1 });
-OrderSchema.index({ "payment.paymentStatus": 1 });
+
+OrderSchema.index({
+    userId: 1,
+    createdAt: -1,
+});
+
+OrderSchema.index({
+    orderStatus: 1,
+});
+
+OrderSchema.index({
+    orderType: 1,
+});
+
+OrderSchema.index({
+    "payment.paymentStatus": 1,
+});
+
+/**
+ * Useful for finding orders created from an auction.
+ */
+OrderSchema.index({
+    "auctionDetails.auctionId": 1,
+});
+
+/**
+ * Useful for finding the order generated from a winning bid.
+ */
+OrderSchema.index({
+    "auctionDetails.winningBidId": 1,
+});
+
+/* =========================================================
+   MODEL
+========================================================= */
 
 export default model("Order", OrderSchema);
