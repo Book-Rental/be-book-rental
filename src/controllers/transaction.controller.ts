@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import {
     createSellerPayout,
     createTransaction,
+    getProfitSummary,
     getTransactionsByOrderId,
 } from "../services/transaction.service";
 
@@ -120,6 +121,31 @@ export const getTransactionsByOrderIdController = async (
             "Failed to fetch transactions",
             error.statusCode ||
             StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+export const getProfitSummaryController = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const profitSummary = await getProfitSummary();
+
+        return successResponse(
+            res,
+            profitSummary,
+            "Profit summary fetched successfully",
+            StatusCode.OK
+        );
+    } catch (error: any) {
+        console.error("Get profit summary error:", error);
+
+        return errorResponse(
+            res,
+            error.message || "Failed to fetch profit summary",
+            error.statusCode ||
+                StatusCode.Internal_Server_Error
         );
     }
 };
