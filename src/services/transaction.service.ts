@@ -225,3 +225,121 @@ export const getTransactionsByOrderId = async (
         },
     };
 };
+
+export const getProfitSummary = async () => {
+    const result = await Transaction.aggregate([
+        {
+            $group: {
+                _id: null,
+
+                totalCreditedAmount: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$direction",
+                                    TransactionDirection.CREDIT,
+                                ],
+                            },
+                            "$totalAmount",
+                            0,
+                        ],
+                    },
+                },
+
+                totalSellerPayout: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $and: [
+                                    {
+                                        $eq: [
+                                            "$transactionType",
+                                            "SELLER_PAYOUT",
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$paymentStatus",
+                                            "SUCCESS",
+                                        ],
+                                    },
+                                ],
+                            },
+                            "$totalAmount",
+                            0,
+                        ],
+                    },
+                },
+
+                totalRefund: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $and: [
+                                    {
+                                        $eq: [
+                                            "$transactionType",
+                                            "REFUND",
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$paymentStatus",
+                                            "SUCCESS",
+                                        ],
+                                    },
+                                ],
+                            },
+                            "$totalAmount",
+                            0,
+                        ],
+                    },
+                },
+            },
+        },
+        {
+            $set: {
+                totalDebitedAmount: {
+                    $add: [
+                        "$totalSellerPayout",
+                        "$totalRefund",
+                    ],
+                },
+            },
+        },
+        {
+            $set: {
+                remainingAmount: {
+                    $subtract: [
+                        "$totalCreditedAmount",
+                        "$totalDebitedAmount",
+                    ],
+                },
+            },
+        },
+        {
+            $project: {
+                _id: 0,
+                totalCreditedAmount: 1,
+                totalSellerPayout: 1,
+                totalRefund: 1,
+                totalDebitedAmount: 1,
+                remainingAmount: 1,
+            },
+        },
+    ]);
+
+    const orderCount = await Order.countDocuments();
+
+    return {
+        totalOrders: orderCount,
+        ...(result[0] || {
+            totalCreditedAmount: 0,
+            totalSellerPayout: 0,
+            totalRefund: 0,
+            totalDebitedAmount: 0,
+            remainingAmount: 0,
+        }),
+    };
+};
