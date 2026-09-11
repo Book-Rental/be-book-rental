@@ -62,14 +62,11 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         }
 
         const token = await generateToken(userInfo);
-        
-        res.clearCookie(`${JWT_TOKEN_NAME}`, {
+        res.cookie(`${JWT_TOKEN_NAME}`, token, {
             httpOnly: true,
-            // MUST match login exactly
             secure: isProd,
-            // MUST match login exactly
             sameSite: isProd ? "none" : "lax",
-            path: "/",
+            maxAge: 24 * 60 * 60 * 1000,
         });
         successResponse(res, { userInfo, token }, Messages.UserAuthenticated, StatusCode.OK);
     } catch (err: any) {
@@ -118,8 +115,10 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
     try {
         res.clearCookie(`${JWT_TOKEN_NAME}`, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
+            // MUST match login exactly
+            secure: isProd,
+            // MUST match login exactly
+            sameSite: isProd ? "none" : "lax",
             path: "/",
         });
         successResponse(res, "", Messages.Logout, StatusCode.OK);
