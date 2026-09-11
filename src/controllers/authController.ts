@@ -62,11 +62,14 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         }
 
         const token = await generateToken(userInfo);
-        res.cookie(`${JWT_TOKEN_NAME}`, token, {
+        
+        res.clearCookie(`${JWT_TOKEN_NAME}`, {
             httpOnly: true,
+            // MUST match login exactly
             secure: isProd,
+            // MUST match login exactly
             sameSite: isProd ? "none" : "lax",
-            maxAge: 24 * 60 * 60 * 1000,
+            path: "/",
         });
         successResponse(res, { userInfo, token }, Messages.UserAuthenticated, StatusCode.OK);
     } catch (err: any) {
@@ -117,7 +120,7 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
-            path: "/", 
+            path: "/",
         });
         successResponse(res, "", Messages.Logout, StatusCode.OK);
     } catch (err) {
