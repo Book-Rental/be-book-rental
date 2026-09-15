@@ -942,7 +942,7 @@ export const getOrderByUserIdService = async (
         // 3. Robust clean-up check handling case-insensitivity (.toUpperCase())
         if (orderStatus && String(orderStatus).toUpperCase() !== "ALL") {
             // If your DB expects uppercase enums, force uppercase here: String(orderStatus).toUpperCase()
-            filter.orderStatus = orderStatus; 
+            filter.orderStatus = orderStatus;
         }
 
         if (orderType && String(orderType).toUpperCase() !== "ALL") {
@@ -1735,11 +1735,24 @@ export const updateSellerOrderItemStatusService = async (
     throw error;
 };
 
-export const getOrderBookDetailsService = async (orderId: string, bookId: string) => {
+export const getOrderBookDetailsService = async (
+    orderId: string,
+    bookId: string
+) => {
     const order: any = await Order.findById(orderId)
         .populate({
             path: "items.bookId",
-            select: "name author publisher language isbn categoryId edition coverImage",
+            select: `
+                name
+                author
+                publisher
+                language
+                isbn
+                categoryId
+                edition
+                coverImage
+                listingType
+            `,
             populate: {
                 path: "categoryId",
                 select: "name",
@@ -1754,11 +1767,28 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
         throw new Error("Order not found.");
     }
 
-    const orderItem = order.items.find((item: any) => item.bookId?._id.toString() === bookId);
-    console.log('hhhd', orderItem)
+    const orderItem = order.items.find(
+        (item: any) =>
+            item.bookId?._id?.toString() === bookId
+    );
+
     if (!orderItem) {
         throw new Error("Book not found in this order.");
     }
+
+    // =====================================================
+    // CHECK AUCTION
+    // =====================================================
+
+    const isAuctionOrder =
+        order.orderType === OrderType.AUCTION;
+
+    const isAuctionBook =
+        orderItem.bookId?.listingType === "AUCTION" ||
+        orderItem.bookId?.listingType === "auction";
+
+    const isAuction =
+        isAuctionOrder || isAuctionBook;
 
     return {
         orderId: order._id,
@@ -1767,90 +1797,208 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
 
         orderDate: order.createdAt,
 
+        // =================================================
+        // ORDER TYPE
+        // =================================================
+
+        orderType: order.orderType,
+
+        // =================================================
+        // AUCTION DETAILS
+        // =================================================
+
+        isAuction: isAuction,
+
+        isAuctionOrder: isAuctionOrder,
+
+        isAuctionBook: isAuctionBook,
+
         orderStatus: order.orderStatus,
 
         quantity: orderItem.quantity,
 
         itemStatus: orderItem.itemStatus,
+
         orderItemId: orderItem._id,
+
         book: {
             bookId: orderItem.bookId._id,
+
             name: orderItem.bookId.name,
+
             author: orderItem.bookId.author,
+
             publisher: orderItem.bookId.publisher,
+
             language: orderItem.bookId.language,
+
             isbn: orderItem.bookId.isbn,
-            category: orderItem.bookId.categoryId?.name,
+
+            category:
+                orderItem.bookId.categoryId?.name,
+
             edition: orderItem.bookId.edition,
+
             coverImage: orderItem.bookId.coverImage,
+
+            listingType:
+                orderItem.bookId.listingType,
         },
-        shipmentDetails: orderItem.shipmentDetails || [],
+
+        shipmentDetails:
+            orderItem.shipmentDetails || [],
+
         seller: {
             _id: orderItem.sellerId?._id,
+
             name: orderItem.sellerId?.name,
         },
 
         rental: {
-            rentalPrice: orderItem.rental.rentalPrice,
-            securityDeposit: orderItem.rental.securityDeposit,
-            rentalDuration: orderItem.rental.rentalDuration,
-            rentStartDate: orderItem.rental.rentStartDate,
-            expectedReturnDate: orderItem.rental.expectedReturnDate,
-            actualReturnDate: orderItem.rental.actualReturnDate,
-            extensionCount: orderItem.rental.extensionCount,
-            maximumExtensions: orderItem.rental.maximumExtensions,
-            extendedUntil: orderItem.rental.extendedUntil,
-            lateFee: orderItem.rental.lateFee,
+            rentalPrice:
+                orderItem.rental?.rentalPrice,
+
+            securityDeposit:
+                orderItem.rental?.securityDeposit,
+
+            rentalDuration:
+                orderItem.rental?.rentalDuration,
+
+            rentStartDate:
+                orderItem.rental?.rentStartDate,
+
+            expectedReturnDate:
+                orderItem.rental?.expectedReturnDate,
+
+            actualReturnDate:
+                orderItem.rental?.actualReturnDate,
+
+            extensionCount:
+                orderItem.rental?.extensionCount,
+
+            maximumExtensions:
+                orderItem.rental?.maximumExtensions,
+
+            extendedUntil:
+                orderItem.rental?.extendedUntil,
+
+            lateFee:
+                orderItem.rental?.lateFee,
         },
 
         shippingAddress: {
-            name: order.shippingAddress.name,
-            phone: order.shippingAddress.phone,
-            addressLine1: order.shippingAddress.addressLine1,
-            addressLine2: order.shippingAddress.addressLine2,
-            landmark: order.shippingAddress.landmark,
-            city: order.shippingAddress.city,
-            state: order.shippingAddress.state,
-            pincode: order.shippingAddress.pincode,
-            country: order.shippingAddress.country,
+            name:
+                order.shippingAddress?.name,
+
+            phone:
+                order.shippingAddress?.phone,
+
+            addressLine1:
+                order.shippingAddress?.addressLine1,
+
+            addressLine2:
+                order.shippingAddress?.addressLine2,
+
+            landmark:
+                order.shippingAddress?.landmark,
+
+            city:
+                order.shippingAddress?.city,
+
+            state:
+                order.shippingAddress?.state,
+
+            pincode:
+                order.shippingAddress?.pincode,
+
+            country:
+                order.shippingAddress?.country,
         },
 
         billingAddress: {
-            name: order.billingAddress.name,
-            phone: order.billingAddress.phone,
-            addressLine1: order.billingAddress.addressLine1,
-            addressLine2: order.billingAddress.addressLine2,
-            landmark: order.billingAddress.landmark,
-            city: order.billingAddress.city,
-            state: order.billingAddress.state,
-            pincode: order.billingAddress.pincode,
-            country: order.billingAddress.country,
+            name:
+                order.billingAddress?.name,
+
+            phone:
+                order.billingAddress?.phone,
+
+            addressLine1:
+                order.billingAddress?.addressLine1,
+
+            addressLine2:
+                order.billingAddress?.addressLine2,
+
+            landmark:
+                order.billingAddress?.landmark,
+
+            city:
+                order.billingAddress?.city,
+
+            state:
+                order.billingAddress?.state,
+
+            pincode:
+                order.billingAddress?.pincode,
+
+            country:
+                order.billingAddress?.country,
         },
 
         payment: {
-            paymentMethod: order.payment.paymentMethod,
-            paymentStatus: order.payment.paymentStatus,
-            transactionId: order.payment.transactionId,
-            paidAt: order.payment.paidAt,
+            paymentMethod:
+                order.payment?.paymentMethod,
+
+            paymentStatus:
+                order.payment?.paymentStatus,
+
+            transactionId:
+                order.payment?.transactionId,
+
+            paidAt:
+                order.payment?.paidAt,
         },
 
         priceSummary: {
-            rentalAmount: order.amount.rentalAmount,
-            securityDeposit: order.amount.securityDeposit,
-            deliveryFee: order.amount.deliveryFee,
-            discount: order.amount.discount,
-            tax: order.amount.tax,
-            totalAmount: order.amount.totalAmount,
-            refundAmount: order.amount.refundAmount,
+            rentalAmount:
+                order.amount?.itemAmount,
+
+            securityDeposit:
+                order.amount?.securityDeposit,
+
+            deliveryFee:
+                order.amount?.deliveryFee,
+
+            discount:
+                order.amount?.discount,
+
+            tax:
+                order.amount?.tax,
+
+            totalAmount:
+                order.amount?.totalAmount,
+
+            refundAmount:
+                order.amount?.refundAmount,
         },
 
         deposit: {
-            amount: orderItem.deposit.amount,
-            status: orderItem.deposit.status,
-            refundedAmount: orderItem.deposit.refundedAmount,
-            deductionAmount: orderItem.deposit.deductionAmount,
-            deductionReason: orderItem.deposit.deductionReason,
-            refundedDate: orderItem.deposit.refundedDate,
+            amount:
+                orderItem.deposit?.amount,
+
+            status:
+                orderItem.deposit?.status,
+
+            refundedAmount:
+                orderItem.deposit?.refundedAmount,
+
+            deductionAmount:
+                orderItem.deposit?.deductionAmount,
+
+            deductionReason:
+                orderItem.deposit?.deductionReason,
+
+            refundedDate:
+                orderItem.deposit?.refundedDate,
         },
     };
 };
@@ -1871,7 +2019,44 @@ export const updateOrderByIdService = async (
         error.statusCode = StatusCode.Not_Found;
         throw error;
     }
+    if (order.orderType === OrderType.AUCTION) {
+        let isReturnRequested = false;
 
+        if (
+            updateData?.itemStatus ===
+            ItemStatus.RETURN_REQUESTED
+        ) {
+            isReturnRequested = true;
+        }
+
+        if (Array.isArray(updateData?.items)) {
+            isReturnRequested =
+                updateData.items.some(
+                    (item: any) =>
+                        item?.itemStatus ===
+                        ItemStatus.RETURN_REQUESTED
+                );
+        }
+
+        if (Array.isArray(updateData?.itemUpdates)) {
+            isReturnRequested =
+                updateData.itemUpdates.some(
+                    (item: any) =>
+                        item?.itemStatus ===
+                        ItemStatus.RETURN_REQUESTED
+                );
+        }
+
+        if (isReturnRequested) {
+            const error: any = new Error(
+                "Return is not allowed for auction orders."
+            );
+
+            error.statusCode = StatusCode.Bad_Request;
+
+            throw error;
+        }
+    }
     const previousItemStatuses = new Map(
         order.items.map((item: any) => [
             item._id.toString(),
