@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Auction, { AuctionStatus } from "../models/Auction";
 import AuctionBid from "../models/AuctionBid";
 import { calculateAuctionStatus } from "../helper/auctionStatus";
+import Order from "../models/Order";
 
 export const createAuctionBidService = async (data: {
     auctionId: string;
@@ -283,7 +284,6 @@ export const updateAuctionBidService = async (
     }
 };
 
-
 export const getAllUserBidsService = async (
     userId: string,
     page = 1,
@@ -307,78 +307,94 @@ export const getAllUserBidsService = async (
             const auction = bid.auctionId as any;
             const book = bid.bookId as any;
 
+            // Get highest bid
             const highestBid = await AuctionBid.findOne({
-                auctionId: auction._id,
-            })
-                .sort({ bidPrice: -1 })
-                .select("bidPrice userId")
-                .lean();
+    auctionId: auction._id,
+})
+    .sort({ bidPrice: -1 })
+    .select("bidPrice userId")
+    .lean();
 
-            const status = calculateAuctionStatus(
-                auction.startDate,
-                auction.duration
-            );
+const status = calculateAuctionStatus(
+    auction.startDate,
+    auction.duration
+);
 
-            const isHighestBidder =
-                highestBid?.userId?.toString() === userId;
+const isHighestBidder =
+    highestBid?.userId?.toString() === userId;
 
-            let calculatedBidStatus: string;
+let calculatedBidStatus: string;
 
-            switch (status) {
-                case AuctionStatus.UPCOMING:
-                    calculatedBidStatus = "upcoming";
-                    break;
+switch (status) {
+    case AuctionStatus.UPCOMING:
+        calculatedBidStatus = "upcoming";
+        break;
 
-                case AuctionStatus.LIVE:
-                    calculatedBidStatus = isHighestBidder
-                        ? "winning"
-                        : "outbid";
-                    break;
+    case AuctionStatus.LIVE:
+        calculatedBidStatus = isHighestBidder
+            ? "winning"
+            : "outbid";
+        break;
 
-                case AuctionStatus.COMPLETED:
-                    calculatedBidStatus = isHighestBidder
-                        ? "won"
-                        : "lost";
-                    break;
+    case AuctionStatus.COMPLETED:
+        calculatedBidStatus = isHighestBidder
+            ? "won"
+            : "lost";
+        break;
 
-                case AuctionStatus.CANCELLED:
-                    calculatedBidStatus = "cancelled";
-                    break;
+    case AuctionStatus.CANCELLED:
+        calculatedBidStatus = "cancelled";
+        break;
 
-                default:
-                    calculatedBidStatus = "unknown";
-            }
+    default:
+        calculatedBidStatus = "unknown";
+}
 
-            return {
-                auction: {
-                    ...auction,
-                    status,
-                    currentBidPrice:
-                        highestBid?.bidPrice ??
-                        auction.bidPrice,
-                },
+// Find order for this auction/winning bid
+const order = await Order.findOne({
+    userId,
+    "auctionDetails.auctionId": auction._id,
+    "auctionDetails.winningBidId": bid._id,
+})
+    .sort({ orderDate: -1 })
+    .lean();
 
-                book: {
-                    _id: book._id,
-                    name: book.name,
-                    coverImage: book.coverImage,
-                },
+return {
+    auction: {
+        ...auction,
+        status,
+        currentBidPrice:
+            highestBid?.bidPrice ?? auction.bidPrice,
+    },
 
-                bid: {
-                    bidId: bid._id,
-                    bidPrice: bid.bidPrice,
-                    bidStatus: calculatedBidStatus,
-                },
-            };
+    book: {
+        _id: book._id,
+        name: book.name,
+        coverImage: book.coverImage,
+    },
+
+    bid: {
+        bidId: bid._id,
+        bidPrice: bid.bidPrice,
+        bidStatus: calculatedBidStatus,
+    },
+
+    order: order ?? null,
+};
         })
     );
 
-    // Filter by bid status
+    // Filter by bid status / auction status
     const filteredResults = bidStatus
-        ? results.filter(
-              (item) =>
-                  item.bid.bidStatus === bidStatus
-          )
+        ? bidStatus === "live"
+            ? results.filter(
+                  (item) =>
+                      item.auction.status === AuctionStatus.LIVE
+              )
+            : results.filter(
+                  (item) =>
+                      item.bid.bidStatus === bidStatus
+              )
         : results;
 
     // Total after filtering
@@ -397,9 +413,7 @@ export const getAllUserBidsService = async (
             page: pageNumber,
             limit: limitNumber,
             total,
-            totalPages: Math.ceil(
-                total / limitNumber
-            ),
+            totalPages: Math.ceil(total / limitNumber),
             hasNextPage:
                 pageNumber <
                 Math.ceil(total / limitNumber),
