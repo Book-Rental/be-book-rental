@@ -202,16 +202,12 @@ export const getBooksBySellerIdService = async (
             sellerId,
         };
 
-        // -----------------------------------------
-        // Category ID filter
-        // -----------------------------------------
+        // Category ID
         if (query.categoryId) {
             filter.categoryId = query.categoryId;
         }
 
-        // -----------------------------------------
-        // Category name filter
-        // -----------------------------------------
+        // Category name
         if (query.categoryName) {
             const category = await Category.findOne({
                 name: {
@@ -221,9 +217,7 @@ export const getBooksBySellerIdService = async (
                 isActive: true,
             }).select("_id");
 
-            if (category) {
-                filter.categoryId = category._id;
-            } else {
+            if (!category) {
                 return {
                     books: [],
                     meta: {
@@ -235,28 +229,22 @@ export const getBooksBySellerIdService = async (
                     },
                 };
             }
+
+            filter.categoryId = category._id;
         }
 
-        // -----------------------------------------
-        // Total records
-        // -----------------------------------------
-        const totalRecords = await Book.countDocuments(
-            filter
-        );
+        const totalRecords =
+            await Book.countDocuments(filter);
 
         const totalPages = Math.ceil(
             totalRecords / limit
         );
 
         const hasMore = page < totalPages;
-
-        // -----------------------------------------
-        // Get books
-        // -----------------------------------------
         const books = await Book.find(filter)
             .populate(
                 "categoryId",
-                "name"
+                "name description isActive isPopular"
             )
             .populate({
                 path: "auctionId",
@@ -273,15 +261,16 @@ export const getBooksBySellerIdService = async (
             .limit(limit)
             .lean();
 
-        // -----------------------------------------
-        // Add auction details
-        // -----------------------------------------
         const booksWithAuctionDetails =
             await Promise.all(
                 books.map(async (book) => {
-                    // Normal book
+
                     if (!book.isAuction) {
-                        return book;
+                        return {
+                            ...book,
+                            category: book.categoryId,
+                            availableForRent: book.availableForRent,
+                        };
                     }
 
                     const auction =
@@ -292,23 +281,21 @@ export const getBooksBySellerIdService = async (
                         !auction ||
                         !auction._id
                     ) {
-                        return book;
+                        return {
+                            ...book,
+                            category: book.categoryId,
+                            auction: null,
+                        };
                     }
 
-                    // -----------------------------------------
-                    // 1. Calculate auction status
-                    // -----------------------------------------
                     const auctionStatus =
                         calculateAuctionStatus(
                             auction.startDate,
                             auction.duration
                         );
 
-                    // -----------------------------------------
-                    // 2. Get highest bid + bidder
-                    // -----------------------------------------
-                    const highestBid =
-                        await AuctionBid.findOne({
+                    const bids =
+                        await AuctionBid.find({
                             auctionId:
                                 auction._id,
                         })
@@ -331,14 +318,54 @@ export const getBooksBySellerIdService = async (
                             )
                             .lean();
 
-                    // -----------------------------------------
-                    // 3. Get entire auction order
-                    // -----------------------------------------
+
+                    const highestBid =
+                        bids[0] ?? null;
+
+
+const bidder = highestBid?.userId as any;
+
+const defaultAddress =
+    bidder?.addresses?.find(
+        (address: any) => address.isDefault
+    ) ??
+    bidder?.addresses?.[0] ??
+    null;
+                    const highestBidder = bidder
+    ? {
+          userId: bidder._id,
+          name: `${bidder.firstName ?? ""} ${
+              bidder.lastName ?? ""
+          }`.trim(),
+          email: bidder.email,
+          phone: defaultAddress?.phone ?? null,
+          profileImage: bidder.profilePic ?? null,
+          address: defaultAddress
+              ? {
+                    _id: defaultAddress._id,
+                    name: defaultAddress.name,
+                    type: defaultAddress.type,
+                    street: defaultAddress.street,
+                    city: defaultAddress.city,
+                    state: defaultAddress.state,
+                    zipCode: defaultAddress.zipCode,
+                    country: defaultAddress.country,
+                    phone: defaultAddress.phone,
+                    location: defaultAddress.location,
+                    isDefault: defaultAddress.isDefault,
+                }
+              : null,
+      }
+    : null;
+
                     const order =
                         await Order.findOne({
-                            orderType: "auction",
+                            orderType:
+                                "auction",
+
                             "items.bookId":
                                 book._id,
+
                             "auctionDetails.auctionId":
                                 auction._id,
                         })
@@ -347,116 +374,143 @@ export const getBooksBySellerIdService = async (
                             })
                             .lean();
 
-                 
-                    const isOrder = !!order;
+                    const isOrder =
+                        !!order;
 
                     const orderStatus =
                         order?.orderStatus ??
                         null;
 
-                 const bidder =
-                        highestBid?.userId as any;
-
-                    const highestBidder =
-                        bidder
-                            ? {
-                                  userId:
-                                      bidder._id,
-
-                                  name: `${bidder.firstName ?? ""} ${
-                                      bidder.lastName ?? ""
-                                  }`.trim(),
-
-                                  email:
-                                      bidder.email,
-
-                                  phone:
-                                      bidder.phone,
-
-                                  profileImage:
-                                      bidder.profileImage,
-                              }
-                            : null;
                     const isAuctionSold =
                         auctionStatus ===
                             "completed" &&
                         isOrder;
 
+
+                    const availabilityStatus =
+                        isAuctionSold
+                            ? "unavailable"
+                            : book.availabilityStatus;
+
+                    const auctionResponse = {
+                        _id: auction._id,
+
+                        bookId:
+                            auction.bookId,
+
+                        bidPrice:
+                            auction.bidPrice,
+
+                        buyNowPrice:
+                            auction.buyNowPrice,
+
+                        duration:
+                            auction.duration,
+
+                        startDate:
+                            auction.startDate,
+
+                        status:
+                            auctionStatus,
+
+                        currentBidPrice:
+                            highestBid?.bidPrice ??
+                            auction.bidPrice,
+
+                        highestBid:
+                            highestBid
+                                ? {
+                                      _id:
+                                          highestBid._id,
+
+                                      auctionId:
+                                          auction._id,
+
+                                      userId:
+                                          bidder?._id ??
+                                          null,
+
+                                      bidPrice:
+                                          highestBid.bidPrice,
+
+                                      createdAt:
+                                          highestBid.createdAt,
+
+                                      bidder:
+                                          bidder
+                                              ? {
+                                                    _id:
+                                                        bidder._id,
+
+                                                    email:
+                                                        bidder.email ??
+                                                        null,
+                                                }
+                                              : null,
+                                  }
+                                : null,
+
+                        highestBidder,
+
+                        bidCount:
+                            bids.length,
+
+                        order:
+                            order ?? null,
+                    };
+
                     return {
                         ...book,
 
-                        status: isAuctionSold
-                            ? "inactive"
-                            : book.status,
+                        auctionId:
+                            auction._id,
 
-                        isActive: isAuctionSold
-                            ? false
-                            : book.isActive,
+                        category:
+                            book.categoryId,
+
+                        availabilityStatus,
+
+                        status:
+                            isAuctionSold
+                                ? "inactive"
+                                : book.status,
+
+                        isActive:
+                            isAuctionSold
+                                ? false
+                                : book.isActive,
 
                         isAvailable:
                             isAuctionSold
                                 ? false
                                 : book.isAvailable,
 
-                        availableForRent:
-                            isAuctionSold
-                                ? false
-                                : book.availableForRent,
+                         availableForRent: false,
 
                         availableForSale:
                             isAuctionSold
                                 ? false
                                 : book.availableForSale,
 
-                        auctionId: {
-                            ...auction,
-
-                            status:
-                                auctionStatus,
-
-                            currentBidPrice:
-                                highestBid?.bidPrice ??
-                                auction.bidPrice,
-
-                            highestBidder,
-
-                            highestBid:
-                                highestBid
-                                    ? {
-                                          _id:
-                                              highestBid._id,
-
-                                          bidPrice:
-                                              highestBid.bidPrice,
-
-                                          userId:
-                                              bidder?._id,
-
-                                          createdAt:
-                                              highestBid.createdAt,
-                                      }
-                                    : null,
-
-                            isOrder,
-
-                            orderStatus,
-                        },
+                        auction:
+                            auctionResponse,
                     };
                 })
             );
 
-        // -----------------------------------------
-        // Final response
-        // -----------------------------------------
+
         return {
-            books:
-                booksWithAuctionDetails,
+            books: booksWithAuctionDetails,
 
             meta: {
                 totalRecords,
+
                 totalPages,
+
                 currentPage: page,
+
                 limit,
+
                 hasMore,
             },
         };

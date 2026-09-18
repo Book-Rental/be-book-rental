@@ -755,6 +755,43 @@ export const buildBookAggregationPipeline =
                         ],
                     },
 
+                     availabilityStatus: {
+            $cond: [
+                {
+                    $and: [
+                        {
+                            $eq: [
+                                "$isAuction",
+                                true,
+                            ],
+                        },
+                        {
+                            $eq: [
+                                "$auction.calculatedStatus",
+                                "completed",
+                            ],
+                        },
+                        {
+                            $gt: [
+                                {
+                                    $size: "$orderDetails",
+                                },
+                                0,
+                            ],
+                        },
+                    ],
+                },
+
+                // Completed auction + order placed
+                "unavailable",
+
+                // Completed auction + no order
+                // Keep original availability
+                "$availabilityStatus",
+            ],
+        },
+
+
                     availableForRent: {
                         $cond: [
                             {
