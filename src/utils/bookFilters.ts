@@ -2,19 +2,22 @@ import { FilterQuery, PipelineStage, Types } from "mongoose";
 import { IBook } from "../models/Book";
 import Category from "../models/Category";
 
-//  * Decode search text safely.
+// ==================================================
+// HELPERS
+// ==================================================
 
 const decodeSearchText = (text: string): string => {
-    return decodeURIComponent(text.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"));
+    return decodeURIComponent(
+        text.replace(
+            /%(?![0-9A-Fa-f]{2})/g,
+            "%25"
+        )
+    );
 };
 
-//  * Convert query string to boolean.
-
-const toBoolean = (value: any): boolean => {
+const toBoolean = (value: unknown): boolean => {
     return String(value).toLowerCase() === "true";
 };
-
-//  * Fetch matching category ids.
 
 const getCategoryIds = async (keyword: string) => {
     const categories = await Category.find({
@@ -24,10 +27,14 @@ const getCategoryIds = async (keyword: string) => {
         },
     }).select("_id");
 
-    return categories.map((category) => category._id);
+    return categories.map(
+        (category) => category._id
+    );
 };
 
-//  * Build MongoDB Filter
+// ==================================================
+// BUILD BOOK FILTER
+// ==================================================
 
 export const buildFilter = async (
     query: any
@@ -52,8 +59,12 @@ export const buildFilter = async (
         } = query;
 
         // Category ID
-        if (categoryID && Types.ObjectId.isValid(categoryID)) {
-            filter.categoryId = new Types.ObjectId(categoryID);
+        if (
+            categoryID &&
+            Types.ObjectId.isValid(categoryID)
+        ) {
+            filter.categoryId =
+                new Types.ObjectId(categoryID);
         }
 
         // Category Name
@@ -63,45 +74,50 @@ export const buildFilter = async (
                 .map((item: string) => item.trim())
                 .filter(Boolean);
 
-            const categories = await Category.find({
-                $or: categoryNames.map((item: string) => ({
-                    name: {
-                        $regex: item,
-                        $options: "i",
-                    },
-                })),
-            }).select("_id");
+            const categories =
+                await Category.find({
+                    $or: categoryNames.map(
+                        (item: string) => ({
+                            name: {
+                                $regex: item,
+                                $options: "i",
+                            },
+                        })
+                    ),
+                }).select("_id");
 
             filter.categoryId = {
-                $in: categories.map((item) => item._id),
+                $in: categories.map(
+                    (item) => item._id
+                ),
             };
         }
 
         // Global Search
-        // Search in:
-        // 1. Book Name
-        // 2. Author
-        // 3. Category
         if (search?.trim()) {
-            const keyword = decodeSearchText(search);
-            const categoryIds = await getCategoryIds(keyword);
+            const keyword =
+                decodeSearchText(search);
 
-            const searchConditions: FilterQuery<IBook>[] = [
-                {
-                    name: {
-                        $regex: keyword,
-                        $options: "i",
-                    },
-                },
-                {
-                    author: {
-                        $regex: keyword,
-                        $options: "i",
-                    },
-                },
-            ];
+            const categoryIds =
+                await getCategoryIds(keyword);
 
-            if (categoryIds.length) {
+            const searchConditions:
+                FilterQuery<IBook>[] = [
+                    {
+                        name: {
+                            $regex: keyword,
+                            $options: "i",
+                        },
+                    },
+                    {
+                        author: {
+                            $regex: keyword,
+                            $options: "i",
+                        },
+                    },
+                ];
+
+            if (categoryIds.length > 0) {
                 searchConditions.push({
                     categoryId: {
                         $in: categoryIds,
@@ -114,12 +130,10 @@ export const buildFilter = async (
             });
         }
 
-        // Name Filter
-        // Search in:
-        // 1. Book Name
-        // 2. Author
+        // Name / Author
         if (name?.trim()) {
-            const keyword = decodeSearchText(name);
+            const keyword =
+                decodeSearchText(name);
 
             andConditions.push({
                 $or: [
@@ -139,21 +153,27 @@ export const buildFilter = async (
             });
         }
 
-        // Language Filter
+        // Language
         const lang = language?.trim();
 
-        if (lang && lang.toLowerCase() !== "all") {
+        if (
+            lang &&
+            lang.toLowerCase() !== "all"
+        ) {
             filter.language = {
                 $in: lang
                     .split(",")
                     .map(
                         (item: string) =>
-                            new RegExp(`^${item.trim()}$`, "i")
+                            new RegExp(
+                                `^${item.trim()}$`,
+                                "i"
+                            )
                     ),
             };
         }
 
-        // Purchase Price Filter
+        // Price
         const min = Number(minPrice);
         const max = Number(maxPrice);
 
@@ -169,53 +189,55 @@ export const buildFilter = async (
             }
         }
 
-        // Boolean Filters
+        // Boolean filters
         if (isPopular !== undefined) {
-            filter.isPopular = toBoolean(isPopular);
+            filter.isPopular =
+                toBoolean(isPopular);
         }
 
         if (isAvailable !== undefined) {
-            filter.isAvailable = toBoolean(isAvailable);
+            filter.isAvailable =
+                toBoolean(isAvailable);
         }
 
         if (availableForSale !== undefined) {
-            filter.availableForSale = toBoolean(availableForSale);
+            filter.availableForSale =
+                toBoolean(availableForSale);
         }
 
         if (availableForRent !== undefined) {
-            filter.availableForRent = toBoolean(availableForRent);
+            filter.availableForRent =
+                toBoolean(availableForRent);
         }
 
         if (isAuction !== undefined) {
             filter.isAuction = toBoolean(isAuction);
+        } else {
+            filter.isAuction = false;
         }
 
-//         if (activeStatus?.trim()) {
-//     const statuses = activeStatus
-//         .split(",")
-//         .map((status: string) => status.trim().toLowerCase())
-//         .filter(Boolean);
-
-//     filter.activeStatus = {
-//         $in: statuses,
-//     };
-// }
-
-        // Attach AND Conditions
         if (andConditions.length > 0) {
             filter.$and = andConditions;
         }
 
         return filter;
     } catch (error) {
-        console.error("Filter Builder Error:", error);
+        console.error(
+            "Filter Builder Error:",
+            error
+        );
 
         return filter;
     }
 };
-//  * Get Sort Option
 
-export const getSortOption = (sortBy?: string): Record<string, 1 | -1> => {
+// ==================================================
+// SORT
+// ==================================================
+
+export const getSortOption = (
+    sortBy?: string
+): Record<string, 1 | -1> => {
     switch (sortBy) {
         case "priceLowToHigh":
             return {
@@ -260,14 +282,26 @@ export const getSortOption = (sortBy?: string): Record<string, 1 | -1> => {
     }
 };
 
-//  * Pagination
+// ==================================================
+// PAGINATION
+// ==================================================
 
-export const getPagination = (page?: number | string, limit?: number | string) => {
-    const pageNum = Math.max(1, Number(page) || 1);
+export const getPagination = (
+    page?: number | string,
+    limit?: number | string
+) => {
+    const pageNum = Math.max(
+        1,
+        Number(page) || 1
+    );
 
-    const limitNum = Math.max(1, Number(limit) || 10);
+    const limitNum = Math.max(
+        1,
+        Number(limit) || 10
+    );
 
-    const skip = (pageNum - 1) * limitNum;
+    const skip =
+        (pageNum - 1) * limitNum;
 
     return {
         pageNum,
@@ -276,10 +310,18 @@ export const getPagination = (page?: number | string, limit?: number | string) =
     };
 };
 
-//  * Build Pagination Metadata
+// ==================================================
+// PAGINATION META
+// ==================================================
 
-export const buildPaginationMeta = (totalRecords: number, page: number, limit: number) => {
-    const totalPages = Math.ceil(totalRecords / limit);
+export const buildPaginationMeta = (
+    totalRecords: number,
+    page: number,
+    limit: number
+) => {
+    const totalPages = Math.ceil(
+        totalRecords / limit
+    );
 
     return {
         totalRecords,
@@ -290,23 +332,13 @@ export const buildPaginationMeta = (totalRecords: number, page: number, limit: n
     };
 };
 
-export const buildBookAggregationPipeline = async (
-    filterQuery: any,
-    sortBy?: string,
-    page: number = 1,
-    limit: number = 10
-): Promise<PipelineStage[]> => {
-    const filter = await buildFilter(filterQuery);
+// ==================================================
+// AUCTION STATUS PIPELINE
+// ==================================================
 
-    const sortOption = getSortOption(sortBy);
-
-    const { skip, limitNum } = getPagination(
-        page,
-        limit
-    );
-
-    const { status } = filterQuery;
-
+const getAuctionStatusStages = (
+    status?: string
+): PipelineStage[] => {
     const auctionStatuses = status
         ?.split(",")
         .map((item: string) =>
@@ -314,398 +346,682 @@ export const buildBookAggregationPipeline = async (
         )
         .filter(Boolean);
 
-    const pipeline: PipelineStage[] = [
-        // --------------------------------------------------
-        // Book filter
-        // --------------------------------------------------
-        {
-            $match: filter,
-        },
+    if (!auctionStatuses?.length) {
+        return [];
+    }
 
-        // --------------------------------------------------
-        // Category lookup
-        // --------------------------------------------------
+    return [
         {
-            $lookup: {
-                from: "categories",
-                localField: "categoryId",
-                foreignField: "_id",
-                as: "category",
-            },
-        },
-
-        {
-            $unwind: {
-                path: "$category",
-                preserveNullAndEmptyArrays: true,
-            },
-        },
-
-        // --------------------------------------------------
-        // Auction lookup
-        // --------------------------------------------------
-        {
-            $lookup: {
-                from: "auctions",
-                localField: "_id",
-                foreignField: "bookId",
-                as: "auction",
-            },
-        },
-
-        {
-            $unwind: {
-                path: "$auction",
-                preserveNullAndEmptyArrays: true,
-            },
-        },
-
-        // --------------------------------------------------
-        // Calculate auction status
-        // --------------------------------------------------
-        {
-            $addFields: {
+            $match: {
                 "auction.calculatedStatus": {
-                    $cond: [
-                        {
-                            $not: ["$auction._id"],
-                        },
-                        null,
-                        {
-                            $switch: {
-                                branches: [
-                                    {
-                                        // UPCOMING
-                                        case: {
-                                            $gt: [
-                                                "$auction.startDate",
-                                                "$$NOW",
-                                            ],
-                                        },
-                                        then: "upcoming",
-                                    },
+                    $in: auctionStatuses,
+                },
+            },
+        },
+    ];
+};
 
-                                    {
-                                        // LIVE
-                                        case: {
-                                            $lt: [
-                                                "$$NOW",
-                                                {
-                                                    $dateAdd: {
-                                                        startDate:
-                                                            "$auction.startDate",
-                                                        unit: "day",
-                                                        amount:
-                                                            "$auction.duration",
-                                                    },
-                                                },
-                                            ],
-                                        },
-                                        then: "live",
-                                    },
+// ==================================================
+// BOOK AGGREGATION PIPELINE
+// ==================================================
+
+export const buildBookAggregationPipeline =
+    async (
+        filterQuery: any,
+        sortBy?: string,
+        page: number = 1,
+        limit: number = 10
+    ): Promise<PipelineStage[]> => {
+        const filter =
+            await buildFilter(filterQuery);
+
+        const sortOption =
+            getSortOption(sortBy);
+
+        const { skip, limitNum } =
+            getPagination(page, limit);
+
+        const pipeline: PipelineStage[] = [
+            // ------------------------------------------
+            // 1. BOOK FILTER
+            // ------------------------------------------
+            {
+                $match: filter,
+            },
+
+            // ------------------------------------------
+            // 2. CATEGORY
+            // ------------------------------------------
+            {
+                $lookup: {
+                    from: "categories",
+                    localField: "categoryId",
+                    foreignField: "_id",
+                    as: "category",
+                },
+            },
+
+            {
+                $unwind: {
+                    path: "$category",
+                    preserveNullAndEmptyArrays: true,
+                },
+            },
+
+            // ------------------------------------------
+            // 3. AUCTION
+            // ------------------------------------------
+            {
+                $lookup: {
+                    from: "auctions",
+                    localField: "_id",
+                    foreignField: "bookId",
+                    as: "auction",
+                },
+            },
+
+            {
+                $unwind: {
+                    path: "$auction",
+                    preserveNullAndEmptyArrays: true,
+                },
+            },
+
+            // ------------------------------------------
+            // 4. CALCULATE AUCTION STATUS
+            // ------------------------------------------
+            {
+                $addFields: {
+                    "auction.calculatedStatus": {
+                        $cond: [
+                            {
+                                $not: [
+                                    "$auction._id",
                                 ],
+                            },
 
-                                // COMPLETED
-                                default: "completed",
+                            null,
+
+                            {
+                                $switch: {
+                                    branches: [
+                                        // UPCOMING
+                                        {
+                                            case: {
+                                                $gt: [
+                                                    "$auction.startDate",
+                                                    "$$NOW",
+                                                ],
+                                            },
+                                            then: "upcoming",
+                                        },
+
+                                        // LIVE
+                                        {
+                                            case: {
+                                                $lt: [
+                                                    "$$NOW",
+                                                    {
+                                                        $dateAdd:
+                                                            {
+                                                                startDate:
+                                                                    "$auction.startDate",
+                                                                unit: "day",
+                                                                amount:
+                                                                    "$auction.duration",
+                                                            },
+                                                    },
+                                                ],
+                                            },
+                                            then: "live",
+                                        },
+                                    ],
+
+                                    default:
+                                        "completed",
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
+
+            // ------------------------------------------
+            // 5. AUCTION STATUS FILTER
+            // ------------------------------------------
+            ...getAuctionStatusStages(
+                filterQuery.status
+            ),
+
+            // ------------------------------------------
+            // 6. HIGHEST BID + BIDDER
+            // ------------------------------------------
+            {
+                $lookup: {
+                    from: "auctionbids",
+
+                    let: {
+                        auctionId:
+                            "$auction._id",
+                    },
+
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: [
+                                        "$auctionId",
+                                        "$$auctionId",
+                                    ],
+                                },
+                            },
+                        },
+
+                        {
+                            $sort: {
+                                bidPrice: -1,
+                            },
+                        },
+
+                        {
+                            $limit: 1,
+                        },
+
+                        // Highest bidder
+                        {
+                            $lookup: {
+                                from: "users",
+
+                                localField:
+                                    "userId",
+
+                                foreignField:
+                                    "_id",
+
+                                as: "bidder",
+                            },
+                        },
+
+                        {
+                            $unwind: {
+                                path: "$bidder",
+                                preserveNullAndEmptyArrays:
+                                    true,
+                            },
+                        },
+
+                        {
+                            $project: {
+                                _id: 1,
+                                auctionId: 1,
+                                userId: 1,
+                                bidPrice: 1,
+                                createdAt: 1,
+
+                                bidder: {
+                                    _id: "$bidder._id",
+                                    name: "$bidder.name",
+                                    email: "$bidder.email",
+                                    phone: "$bidder.phone",
+                                    profileImage:
+                                        "$bidder.profileImage",
+                                },
                             },
                         },
                     ],
+
+                    as: "highestBid",
                 },
             },
-        },
 
-        // --------------------------------------------------
-        // Auction status filter
-        // --------------------------------------------------
-        ...(auctionStatuses?.length
-            ? [
-                  {
-                      $match: {
-                          "auction.calculatedStatus": {
-                              $in: auctionStatuses,
-                          },
-                      },
-                  },
-              ]
-            : []),
+            // ------------------------------------------
+            // 7. BID COUNT
+            // ------------------------------------------
+            {
+                $lookup: {
+                    from: "auctionbids",
 
-        // --------------------------------------------------
-        // Get auction bid details
-        // --------------------------------------------------
-        {
-            $lookup: {
-                from: "auctionbids",
+                    let: {
+                        auctionId:
+                            "$auction._id",
+                    },
 
-                let: {
-                    auctionId: "$auction._id",
-                },
-
-                pipeline: [
-                    {
-                        $match: {
-                            $expr: {
-                                $eq: [
-                                    "$auctionId",
-                                    "$$auctionId",
-                                ],
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: [
+                                        "$auctionId",
+                                        "$$auctionId",
+                                    ],
+                                },
                             },
                         },
-                    },
 
-                    {
-                        $facet: {
-                            // Highest bid
-                            highestBid: [
-                                {
-                                    $sort: {
-                                        bidPrice: -1,
-                                    },
-                                },
-                                {
-                                    $limit: 1,
-                                },
-                            ],
-
-                            // Total number of bids
-                            bidCount: [
-                                {
-                                    $count: "count",
-                                },
-                            ],
+                        {
+                            $count: "count",
                         },
-                    },
-                ],
+                    ],
 
-                as: "auctionBidDetails",
-            },
-        },
-
-        // --------------------------------------------------
-        // Unwind bid details
-        // --------------------------------------------------
-        {
-            $unwind: {
-                path: "$auctionBidDetails",
-                preserveNullAndEmptyArrays: true,
-            },
-        },
-
-        // --------------------------------------------------
-        // Build response
-        // --------------------------------------------------
-        {
-            $addFields: {
-                category: {
-                    id: "$category._id",
-                    name: "$category.name",
+                    as: "bidCount",
                 },
+            },
 
-                auction: {
-                    $cond: [
+            // ------------------------------------------
+            // 8. AUCTION ORDER
+            // ------------------------------------------
+            {
+                $lookup: {
+                    from: "orders",
+
+                    let: {
+                        bookId: "$_id",
+                        isAuctionBook:
+                            "$isAuction",
+                    },
+
+                    pipeline: [
                         {
-                            $eq: [
-                                "$isAuction",
-                                true,
-                            ],
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        // Only auction books
+                                        {
+                                            $eq: [
+                                                "$$isAuctionBook",
+                                                true,
+                                            ],
+                                        },
+
+                                        // Only auction orders
+                                        {
+                                            $eq: [
+                                                "$orderType",
+                                                "auction",
+                                            ],
+                                        },
+
+                                        // Book exists in order
+                                        {
+                                            $in: [
+                                                "$$bookId",
+                                                "$items.bookId",
+                                            ],
+                                        },
+                                    ],
+                                },
+                            },
                         },
 
                         {
-                            $mergeObjects: [
-                                "$auction",
+                            $sort: {
+                                createdAt: -1,
+                            },
+                        },
 
-                                {
-                                    // Auction status
-                                    status: "$auction.calculatedStatus",
+                        {
+                            $limit: 1,
+                        },
+                    ],
 
-                                    // Current highest bid
-                                    currentBidPrice: {
-                                        $ifNull: [
-                                            {
-                                                $arrayElemAt: [
-                                                    "$auctionBidDetails.highestBid.bidPrice",
-                                                    0,
-                                                ],
-                                            },
-                                            "$auction.bidPrice",
+                    as: "orderDetails",
+                },
+            },
+
+            // ------------------------------------------
+            // 9. BUILD FINAL RESPONSE
+            // ------------------------------------------
+            {
+                $addFields: {
+                    // Category
+                    category: {
+                        id: "$category._id",
+                        name: "$category.name",
+                    },
+
+                    // --------------------------------------
+                    // Book status
+                    // --------------------------------------
+                    status: {
+                        $cond: [
+                            {
+                                $and: [
+                                    {
+                                        $eq: [
+                                            "$isAuction",
+                                            true,
                                         ],
                                     },
 
-                                    // Number of bids
-                                    bidCount: {
-                                        $ifNull: [
+                                    {
+                                        $eq: [
+                                            "$auction.calculatedStatus",
+                                            "completed",
+                                        ],
+                                    },
+
+                                    {
+                                        $gt: [
                                             {
-                                                $arrayElemAt: [
-                                                    "$auctionBidDetails.bidCount.count",
-                                                    0,
-                                                ],
+                                                $size: "$orderDetails",
                                             },
                                             0,
                                         ],
                                     },
-                                },
-                            ],
-                        },
+                                ],
+                            },
 
-                        null,
-                    ],
-                },
-            },
-        },
+                            "inactive",
 
-        // --------------------------------------------------
-        // Remove unwanted fields
-        // --------------------------------------------------
-        {
-            $project: {
-                __v: 0,
-                categoryId: 0,
-                auctionBidDetails: 0,
+                            "$status",
+                        ],
+                    },
 
-                "category.__v": 0,
-                "category.createdAt": 0,
-                "category.updatedAt": 0,
-
-                "auction.__v": 0,
-                "auction.createdAt": 0,
-                "auction.updatedAt": 0,
-                "auction.calculatedStatus": 0,
-            },
-        },
-
-        // --------------------------------------------------
-        // Sort
-        // --------------------------------------------------
-        {
-            $sort: sortOption,
-        },
-
-        // --------------------------------------------------
-        // Pagination
-        // --------------------------------------------------
-        {
-            $skip: skip,
-        },
-
-        {
-            $limit: limitNum,
-        },
-    ];
-
-    return pipeline;
-};
-
-
-// Build Count Aggregation Pipeline
-export const buildBookCountAggregationPipeline = async (
-    filterQuery: any
-): Promise<PipelineStage[]> => {
-
-    const filter =
-        await buildFilter(filterQuery);
-
-    const { status } = filterQuery;
-
-    const auctionStatuses = status
-        ?.split(",")
-        .map((item: string) =>
-            item.trim().toLowerCase()
-        )
-        .filter(Boolean);
-
-    const pipeline: PipelineStage[] = [
-
-        // Apply Book filters
-        {
-            $match: filter,
-        },
-
-        // Join Auction
-        {
-            $lookup: {
-                from: "auctions",
-                localField: "_id",
-                foreignField: "bookId",
-                as: "auction",
-            },
-        },
-
-        {
-            $unwind: {
-                path: "$auction",
-                preserveNullAndEmptyArrays: true,
-            },
-        },
-
-        // Calculate auction status dynamically
-        {
-            $addFields: {
-                "auction.calculatedStatus": {
-                    $cond: [
-                        {
-                            $not: ["$auction._id"],
-                        },
-                        null,
-                        {
-                            $switch: {
-                                branches: [
+                    // --------------------------------------
+                    // Active
+                    // --------------------------------------
+                    isActive: {
+                        $cond: [
+                            {
+                                $and: [
                                     {
-                                        // UPCOMING
-                                        case: {
-                                            $gt: [
-                                                "$auction.startDate",
-                                                "$$NOW",
-                                            ],
-                                        },
-                                        then: "upcoming",
+                                        $eq: [
+                                            "$isAuction",
+                                            true,
+                                        ],
                                     },
 
                                     {
-                                        // LIVE
-                                        case: {
-                                            $lt: [
-                                                "$$NOW",
-                                                {
-                                                    $dateAdd: {
-                                                        startDate:
-                                                            "$auction.startDate",
-                                                        unit: "day",
-                                                        amount:
-                                                            "$auction.duration",
-                                                    },
-                                                },
-                                            ],
-                                        },
-                                        then: "live",
+                                        $eq: [
+                                            "$auction.calculatedStatus",
+                                            "completed",
+                                        ],
+                                    },
+
+                                    {
+                                        $gt: [
+                                            {
+                                                $size: "$orderDetails",
+                                            },
+                                            0,
+                                        ],
                                     },
                                 ],
-
-                                // COMPLETED
-                                default: "completed",
                             },
-                        },
-                    ],
+
+                            false,
+
+                            "$isActive",
+                        ],
+                    },
+
+                    availableForRent: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$isAuction",
+                                    true,
+                                ],
+                            },
+
+                            false,
+
+                            "$availableForRent",
+                        ],
+                    },
+
+                    isAvailable: {
+                        $cond: [
+                            {
+                                $and: [
+                                    {
+                                        $eq: [
+                                            "$isAuction",
+                                            true,
+                                        ],
+                                    },
+
+                                    {
+                                        $eq: [
+                                            "$auction.calculatedStatus",
+                                            "completed",
+                                        ],
+                                    },
+
+                                    {
+                                        $gt: [
+                                            {
+                                                $size: "$orderDetails",
+                                            },
+                                            0,
+                                        ],
+                                    },
+                                ],
+                            },
+
+                            false,
+
+                            "$isAvailable",
+                        ],
+                    },
+
+                    auction: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$isAuction",
+                                    true,
+                                ],
+                            },
+
+                            {
+                                $mergeObjects: [
+                                    "$auction",
+
+                                    {
+                                        // Status
+                                        status:
+                                            "$auction.calculatedStatus",
+
+                                        // Current highest bid
+                                        currentBidPrice: {
+                                            $ifNull: [
+                                                {
+                                                    $arrayElemAt:
+                                                        [
+                                                            "$highestBid.bidPrice",
+                                                            0,
+                                                        ],
+                                                },
+
+                                                "$auction.bidPrice",
+                                            ],
+                                        },
+
+                                        // Highest bid
+                                        highestBid: {
+                                            $arrayElemAt:
+                                                [
+                                                    "$highestBid",
+                                                    0,
+                                                ],
+                                        },
+
+                                        // Highest bidder
+                                        highestBidder: {
+                                            $arrayElemAt:
+                                                [
+                                                    "$highestBid.bidder",
+                                                    0,
+                                                ],
+                                        },
+
+                                        // Bid count
+                                        bidCount: {
+                                            $ifNull: [
+                                                {
+                                                    $arrayElemAt:
+                                                        [
+                                                            "$bidCount.count",
+                                                            0,
+                                                        ],
+                                                },
+
+                                                0,
+                                            ],
+                                        },
+
+                                        // Order
+                                        order: {
+                                            $arrayElemAt:
+                                                [
+                                                    "$orderDetails",
+                                                    0,
+                                                ],
+                                        },
+                                    },
+                                ],
+                            },
+
+                            null,
+                        ],
+                    },
                 },
             },
-        },
 
-        // Apply auction status filter
-        ...(auctionStatuses?.length
-            ? [
-                  {
-                      $match: {
-                          "auction.calculatedStatus": {
-                              $in: auctionStatuses,
-                          },
-                      },
-                  },
-              ]
-            : []),
 
-        // Count matching books
-        {
-            $count: "totalCount",
-        },
-    ];
+            {
+                $project: {
+                    __v: 0,
+                    categoryId: 0,
 
-    return pipeline;
-};
+                    highestBid: 0,
+                    bidCount: 0,
+                    orderDetails: 0,
+
+                    "category.__v": 0,
+                    "category.createdAt": 0,
+                    "category.updatedAt": 0,
+
+                    "auction.__v": 0,
+                    "auction.createdAt": 0,
+                    "auction.updatedAt": 0,
+                    "auction.calculatedStatus": 0,
+                },
+            },
+
+            {
+                $sort: sortOption,
+            },
+
+            // ------------------------------------------
+            // 12. PAGINATION
+            // ------------------------------------------
+            {
+                $skip: skip,
+            },
+
+            {
+                $limit: limitNum,
+            },
+        ];
+
+        return pipeline;
+    };
+
+
+export const buildBookCountAggregationPipeline =
+    async (
+        filterQuery: any
+    ): Promise<PipelineStage[]> => {
+        const filter =
+            await buildFilter(filterQuery);
+
+        const pipeline: PipelineStage[] = [
+
+            {
+                $match: filter,
+            },
+
+            {
+                $lookup: {
+                    from: "auctions",
+                    localField: "_id",
+                    foreignField: "bookId",
+                    as: "auction",
+                },
+            },
+
+            {
+                $unwind: {
+                    path: "$auction",
+                    preserveNullAndEmptyArrays: true,
+                },
+            },
+
+            {
+                $addFields: {
+                    "auction.calculatedStatus": {
+                        $cond: [
+                            {
+                                $not: [
+                                    "$auction._id",
+                                ],
+                            },
+
+                            null,
+
+                            {
+                                $switch: {
+                                    branches: [
+                                        // UPCOMING
+                                        {
+                                            case: {
+                                                $gt: [
+                                                    "$auction.startDate",
+                                                    "$$NOW",
+                                                ],
+                                            },
+                                            then: "upcoming",
+                                        },
+
+                                        // LIVE
+                                        {
+                                            case: {
+                                                $lt: [
+                                                    "$$NOW",
+                                                    {
+                                                        $dateAdd:
+                                                            {
+                                                                startDate:
+                                                                    "$auction.startDate",
+                                                                unit: "day",
+                                                                amount:
+                                                                    "$auction.duration",
+                                                            },
+                                                    },
+                                                ],
+                                            },
+                                            then: "live",
+                                        },
+                                    ],
+
+                                    default:
+                                        "completed",
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
+
+            ...getAuctionStatusStages(
+                filterQuery.status
+            ),
+            {
+                $count: "totalCount",
+            },
+        ];
+
+        return pipeline;
+    };
