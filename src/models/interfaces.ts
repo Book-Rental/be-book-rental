@@ -39,6 +39,7 @@ export interface IUserAddress {
 export enum UserType {
     CUSTOMER = "customer",
     ADMIN = "admin",
+    SUPERADMIN = "superadmin",
 }
 
 export enum Status {
@@ -77,6 +78,6 @@ export interface IAuction {
     bidPrice: number;
     buyNowPrice?: number;
     duration: number;
-    startDate: Date; 
+    startDate: Date;
     bookId: Types.ObjectId;
 }
