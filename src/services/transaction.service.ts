@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Order from "../models/Order";
 import Transaction, { TransactionDirection, TransactionStatus, TransactionType } from "../models/Transaction";
 import { StatusCode } from "../utils/StatusCodes";
@@ -232,13 +233,29 @@ export const getProfitSummary = async () => {
             $group: {
                 _id: null,
 
-                totalCreditedAmount: {
+                totalCustomerPayments: {
                     $sum: {
                         $cond: [
                             {
-                                $eq: [
-                                    "$direction",
-                                    TransactionDirection.CREDIT,
+                                $and: [
+                                    {
+                                        $eq: [
+                                            "$transactionType",
+                                            TransactionType.PAYMENT,
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$paymentStatus",
+                                            TransactionStatus.SUCCESS,
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$direction",
+                                            TransactionDirection.CREDIT,
+                                        ],
+                                    },
                                 ],
                             },
                             "$totalAmount",
@@ -255,13 +272,19 @@ export const getProfitSummary = async () => {
                                     {
                                         $eq: [
                                             "$transactionType",
-                                            "SELLER_PAYOUT",
+                                            TransactionType.SELLER_PAYOUT,
                                         ],
                                     },
                                     {
                                         $eq: [
                                             "$paymentStatus",
-                                            "SUCCESS",
+                                            TransactionStatus.SUCCESS,
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$direction",
+                                            TransactionDirection.DEBIT,
                                         ],
                                     },
                                 ],
@@ -280,13 +303,19 @@ export const getProfitSummary = async () => {
                                     {
                                         $eq: [
                                             "$transactionType",
-                                            "REFUND",
+                                            TransactionType.REFUND,
                                         ],
                                     },
                                     {
                                         $eq: [
                                             "$paymentStatus",
-                                            "SUCCESS",
+                                            TransactionStatus.SUCCESS,
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$direction",
+                                            TransactionDirection.DEBIT,
                                         ],
                                     },
                                 ],
@@ -298,6 +327,7 @@ export const getProfitSummary = async () => {
                 },
             },
         },
+
         {
             $set: {
                 totalDebitedAmount: {
@@ -308,20 +338,22 @@ export const getProfitSummary = async () => {
                 },
             },
         },
+
         {
             $set: {
                 remainingAmount: {
                     $subtract: [
-                        "$totalCreditedAmount",
+                        "$totalCustomerPayments",
                         "$totalDebitedAmount",
                     ],
                 },
             },
         },
+
         {
             $project: {
                 _id: 0,
-                totalCreditedAmount: 1,
+                totalCustomerPayments: 1,
                 totalSellerPayout: 1,
                 totalRefund: 1,
                 totalDebitedAmount: 1,
@@ -334,12 +366,402 @@ export const getProfitSummary = async () => {
 
     return {
         totalOrders: orderCount,
+
         ...(result[0] || {
-            totalCreditedAmount: 0,
+            totalCustomerPayments: 0,
             totalSellerPayout: 0,
             totalRefund: 0,
             totalDebitedAmount: 0,
             remainingAmount: 0,
         }),
+    };
+};
+
+export const getSellerPayouts = async () => {
+    const payouts = await Transaction.aggregate([
+        {
+            $match: {
+                transactionType: TransactionType.SELLER_PAYOUT,
+                direction: TransactionDirection.DEBIT,
+                paymentStatus: TransactionStatus.SUCCESS,
+            },
+        },
+
+        {
+            $unwind: "$breakup",
+        },
+
+        {
+            $group: {
+                _id: "$breakup.sellerId",
+
+                totalPayout: {
+                    $sum: "$breakup.totalAmount",
+                },
+
+                payoutCount: {
+                    $sum: 1,
+                },
+            },
+        },
+
+        {
+            $lookup: {
+                from: "users",
+                localField: "_id",
+                foreignField: "_id",
+                as: "seller",
+            },
+        },
+
+        {
+            $unwind: {
+                path: "$seller",
+                preserveNullAndEmptyArrays: true,
+            },
+        },
+
+        {
+            $sort: {
+                totalPayout: -1,
+            },
+        },
+
+        {
+            $project: {
+                _id: 0,
+
+                sellerId: "$_id",
+
+                firstName: "$seller.firstName",
+                lastName: "$seller.lastName",
+                email: "$seller.email",
+                profilePic: "$seller.profilePic",
+
+                totalPayout: 1,
+                payoutCount: 1,
+            },
+        },
+    ]);
+
+    const totalSellerPayout = payouts.reduce(
+        (total, seller) => total + seller.totalPayout,
+        0
+    );
+
+    return {
+        totalSellerPayout,
+        sellers: payouts,
+    };
+};
+
+export const getSellerPayoutDetails = async (
+    sellerId: string
+) => {
+    const payouts = await Transaction.aggregate([
+        {
+            $match: {
+                transactionType: TransactionType.SELLER_PAYOUT,
+                direction: TransactionDirection.DEBIT,
+                paymentStatus: TransactionStatus.SUCCESS,
+                "breakup.sellerId": new mongoose.Types.ObjectId(
+                    sellerId
+                ),
+            },
+        },
+
+        {
+            $unwind: "$breakup",
+        },
+
+        // Keep only this seller's breakup
+        {
+            $match: {
+                "breakup.sellerId": new mongoose.Types.ObjectId(
+                    sellerId
+                ),
+            },
+        },
+
+        {
+            $sort: {
+                createdAt: -1,
+            },
+        },
+
+        {
+            $project: {
+                _id: 0,
+
+                transactionId: 1,
+                orderId: 1,
+                userId: 1,
+
+                amount: "$breakup.totalAmount",
+
+                orderItemId: "$breakup.orderItemId",
+                bookId: "$breakup.bookId",
+
+                rentalAmount: "$breakup.rentalAmount",
+                securityDeposit: "$breakup.securityDeposit",
+                deliveryFee: "$breakup.deliveryFee",
+                discount: "$breakup.discount",
+                tax: "$breakup.tax",
+
+                paymentMethod: 1,
+                paymentStatus: 1,
+                gatewayTransactionId: 1,
+
+                payoutDate: "$createdAt",
+            },
+        },
+    ]);
+
+    const totalPayout = payouts.reduce(
+        (total, payout) => total + payout.amount,
+        0
+    );
+
+    return {
+        sellerId,
+        payoutCount: payouts.length,
+        totalPayout,
+        payouts,
+    };
+};
+
+export const getCustomerSummary = async () => {
+    const customers = await Transaction.aggregate([
+        {
+            $match: {
+                paymentStatus: TransactionStatus.SUCCESS,
+                $or: [
+                    {
+                        transactionType: TransactionType.PAYMENT,
+                        direction: TransactionDirection.CREDIT,
+                    },
+                    {
+                        transactionType: TransactionType.REFUND,
+                        direction: TransactionDirection.DEBIT,
+                    },
+                ],
+            },
+        },
+
+        {
+            $group: {
+                _id: {
+                    userId: "$userId",
+                    transactionType: "$transactionType",
+                },
+
+                amount: {
+                    $sum: "$totalAmount",
+                },
+
+                transactionCount: {
+                    $sum: 1,
+                },
+            },
+        },
+
+        {
+            $group: {
+                _id: "$_id.userId",
+
+                payments: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$_id.transactionType",
+                                    TransactionType.PAYMENT,
+                                ],
+                            },
+                            "$amount",
+                            0,
+                        ],
+                    },
+                },
+
+                refunds: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$_id.transactionType",
+                                    TransactionType.REFUND,
+                                ],
+                            },
+                            "$amount",
+                            0,
+                        ],
+                    },
+                },
+
+                paymentCount: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$_id.transactionType",
+                                    TransactionType.PAYMENT,
+                                ],
+                            },
+                            "$transactionCount",
+                            0,
+                        ],
+                    },
+                },
+
+                refundCount: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $eq: [
+                                    "$_id.transactionType",
+                                    TransactionType.REFUND,
+                                ],
+                            },
+                            "$transactionCount",
+                            0,
+                        ],
+                    },
+                },
+            },
+        },
+
+        {
+            $lookup: {
+                from: "users",
+                localField: "_id",
+                foreignField: "_id",
+                as: "customer",
+            },
+        },
+
+        {
+            $unwind: {
+                path: "$customer",
+                preserveNullAndEmptyArrays: true,
+            },
+        },
+
+        {
+            $project: {
+                _id: 0,
+
+                customerId: "$_id",
+
+                firstName: "$customer.firstName",
+                lastName: "$customer.lastName",
+                email: "$customer.email",
+                profilePic: "$customer.profilePic",
+
+                paymentCount: 1,
+                refundCount: 1,
+
+                totalPaid: "$payments",
+                totalRefunded: "$refunds",
+
+                netAmount: {
+                    $subtract: [
+                        "$payments",
+                        "$refunds",
+                    ],
+                },
+            },
+        },
+
+        {
+            $sort: {
+                totalPaid: -1,
+            },
+        },
+    ]);
+
+    const totalCustomerPayments = customers.reduce(
+        (total, customer) =>
+            total + customer.totalPaid,
+        0
+    );
+
+    const totalCustomerRefunds = customers.reduce(
+        (total, customer) =>
+            total + customer.totalRefunded,
+        0
+    );
+
+    return {
+        totalCustomerPayments,
+        totalCustomerRefunds,
+
+        customers,
+    };
+};
+
+export const getCustomerTransactionDetails = async (
+    customerId: string
+) => {
+    const transactions = await Transaction.find({
+        userId: new mongoose.Types.ObjectId(customerId),
+        paymentStatus: TransactionStatus.SUCCESS,
+        $or: [
+            {
+                transactionType: TransactionType.PAYMENT,
+                direction: TransactionDirection.CREDIT,
+            },
+            {
+                transactionType: TransactionType.REFUND,
+                direction: TransactionDirection.DEBIT,
+            },
+        ],
+    })
+        .sort({
+            createdAt: -1,
+        })
+        .lean();
+
+    const payments = transactions.filter(
+        (transaction) =>
+            transaction.transactionType ===
+                TransactionType.PAYMENT &&
+            transaction.direction ===
+                TransactionDirection.CREDIT
+    );
+
+    const refunds = transactions.filter(
+        (transaction) =>
+            transaction.transactionType ===
+                TransactionType.REFUND &&
+            transaction.direction ===
+                TransactionDirection.DEBIT
+    );
+
+    const totalPaid = payments.reduce(
+        (total, transaction) =>
+            total + transaction.totalAmount,
+        0
+    );
+
+    const totalRefunded = refunds.reduce(
+        (total, transaction) =>
+            total + transaction.totalAmount,
+        0
+    );
+
+    return {
+        customerId,
+
+        paymentCount: payments.length,
+        refundCount: refunds.length,
+
+        totalPaid,
+        totalRefunded,
+
+        netAmount: totalPaid - totalRefunded,
+
+        payments,
+        refunds,
     };
 };
