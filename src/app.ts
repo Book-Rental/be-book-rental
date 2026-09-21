@@ -17,6 +17,7 @@ app.use(
         origin: [
             "http://localhost:3000",
             "http://localhost:5173",
+            "http://localhost:5174",
             "https://fe-book-rental-host.onrender.com",
             "https://admin-agent-host.onrender.com",
             "https://socket-io-frontend-c3wf.onrender.com"
