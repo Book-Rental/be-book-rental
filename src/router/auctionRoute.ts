@@ -14,6 +14,7 @@ route.get("/:bookId/auction/bid/:userId",auth as any, getBookAuctionBidDetails)
 route.put('/auction-bids/:bidId', updateAuctionBid)
 route.patch(
     "/:auctionId/cancel",
+    auth as any,
     cancelAuction
 );
 export default route;
