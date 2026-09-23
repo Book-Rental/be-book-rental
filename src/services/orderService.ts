@@ -1,16 +1,19 @@
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 import Book from "../models/Book";
-import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus, ShipmentType } from "../models/Order";
+import Order, { OrderStatus, PaymentStatus, ItemStatus, OrderItemSchema, DepositStatus, ShipmentType, OrderType } from "../models/Order";
 
 import User from "../models/User";
 import { buildPaginationQuery } from "../utils/appFunctions";
-import { Messages } from "../utils/constants";
+import { Messages, PaymentMethod } from "../utils/constants";
 import { StatusCode } from "../utils/StatusCodes";
 import { applyItemUpdates, applyTopLevelUpdates, syncBookStatuses, syncOrderStatusFromItems, validateAndResolveItems, validateOrderStatusTransition, validatePaymentStatusTransition } from "../utils/updateOrderFunction";
 import { buildOrderPipeline, formatOrderRecords, OrderQuery } from "./orderFilters";
 import { createReturnShipmentFromOrder, createShipmentFromOrder } from "../helper/shipmentHelper";
 import { sendEmail } from "./email.service";
 import { sendOrderStatusEmail, getShipmentEvent, getOutForDeliveryEvent, getDeliveredEvent } from "./orderEmail.service";
+import Transaction, { TransactionDirection, TransactionStatus, TransactionType } from "../models/Transaction";
+import { createTransaction } from "./transaction.service";
+import { getAllAuctionBidsService } from "./auctionBidService";
 const { compileTemplate } = require("../templates/template");
 
 //getAll Order
@@ -65,14 +68,156 @@ export const getOrderByOrderIdService = async (orderId: string) => {
     }
 };
 
-// //Create Order
+const createTransactionBreakup = (
+    orderItems: any[],
+    amount: any
+) => {
+    const totalItemBaseAmount = orderItems.reduce(
+        (sum: number, item: any) => {
+            const rentalAmount = Number(
+                item.rental?.rentalPrice || 0
+            );
+
+            const securityDeposit = Number(
+                item.deposit?.amount || 0
+            );
+
+            // For BUY and AUCTION orders, the item amount
+            // will be derived from the total item amount.
+            return (
+                sum +
+                rentalAmount +
+                securityDeposit
+            );
+        },
+        0
+    );
+
+    const deliveryFee = Number(amount.deliveryFee) || 0;
+    const discount = Number(amount.discount) || 0;
+    const tax = Number(amount.tax) || 0;
+
+    let allocatedDeliveryFee = 0;
+    let allocatedDiscount = 0;
+    let allocatedTax = 0;
+
+    return orderItems.map(
+        (item: any, index: number) => {
+            const rentalAmount = Number(
+                item.rental?.rentalPrice || 0
+            );
+
+            const securityDeposit = Number(
+                item.deposit?.amount || 0
+            );
+
+            let itemBaseAmount =
+                rentalAmount + securityDeposit;
+
+            // For BUY or AUCTION orders, rental is null.
+            // Since auction orders currently contain one item,
+            // use the complete itemAmount.
+            if (itemBaseAmount === 0) {
+                itemBaseAmount =
+                    Number(amount.itemAmount || 0);
+            }
+
+            const effectiveTotalBaseAmount =
+                totalItemBaseAmount > 0
+                    ? totalItemBaseAmount
+                    : Number(amount.itemAmount || 0);
+
+            const ratio =
+                effectiveTotalBaseAmount > 0
+                    ? itemBaseAmount /
+                    effectiveTotalBaseAmount
+                    : 0;
+
+            const isLastItem =
+                index === orderItems.length - 1;
+
+            // Give any rounding remainder to the last item
+            const itemDeliveryFee = isLastItem
+                ? deliveryFee - allocatedDeliveryFee
+                : Number(
+                    (deliveryFee * ratio).toFixed(2)
+                );
+
+            const itemDiscount = isLastItem
+                ? discount - allocatedDiscount
+                : Number(
+                    (discount * ratio).toFixed(2)
+                );
+
+            const itemTax = isLastItem
+                ? tax - allocatedTax
+                : Number(
+                    (tax * ratio).toFixed(2)
+                );
+
+            allocatedDeliveryFee += itemDeliveryFee;
+            allocatedDiscount += itemDiscount;
+            allocatedTax += itemTax;
+
+            const itemTotalAmount =
+                itemBaseAmount +
+                itemDeliveryFee +
+                itemTax -
+                itemDiscount;
+
+            return {
+                orderItemId: item._id,
+                bookId: item.bookId,
+                sellerId: item.sellerId,
+
+                rentalAmount,
+
+                securityDeposit,
+
+                itemAmount: Number(
+                    itemBaseAmount.toFixed(2)
+                ),
+
+                deliveryFee: itemDeliveryFee,
+
+                discount: itemDiscount,
+
+                tax: itemTax,
+
+                totalAmount: Number(
+                    itemTotalAmount.toFixed(2)
+                ),
+            };
+        }
+    );
+};
 
 export const createOrderService = async (orderData: any) => {
     try {
-        const { userId, items, shippingAddress, billingAddress, payment, amount, createdBy } =
-            orderData;
+        const {
+            userId,
+            items,
+            shippingAddress,
+            billingAddress,
+            payment,
+            amount,
+            createdBy,
+            orderType = OrderType.RENT,
+        } = orderData;
 
-        // ================= User Validation =================
+        // =====================================================
+        // VALIDATE ORDER TYPE
+        // =====================================================
+
+        if (!Object.values(OrderType).includes(orderType)) {
+            throw new Error(
+                "Invalid order type. Allowed values are buy, rent and auction."
+            );
+        }
+
+        // =====================================================
+        // USER VALIDATION
+        // =====================================================
 
         const user = await User.findById(userId);
 
@@ -80,80 +225,170 @@ export const createOrderService = async (orderData: any) => {
             throw new Error("User not found.");
         }
 
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            throw new Error("Order should contain at least one book.");
+        }
+
+        // Auction orders should contain only one book
+        if (
+            orderType === OrderType.AUCTION &&
+            items.length !== 1
+        ) {
+            throw new Error(
+                "An auction order must contain exactly one book."
+            );
+        }
+
         const orderItems = [];
 
-        let calculatedRentalAmount = 0;
+        let calculatedItemAmount = 0;
         let calculatedSecurityDeposit = 0;
 
-        // ================= Validate Books =================
+        // This will be automatically generated from the book
+        let formattedAuctionDetails = null;
+
+        // =====================================================
+        // PROCESS ORDER ITEMS
+        // =====================================================
 
         for (const item of items) {
-            const book: any = await Book.findById(item.bookId);
+            const book = await Book.findById(item.bookId);
+
 
             if (!book) {
-                throw new Error(`Book not found : ${item.bookId}`);
+                throw new Error(
+                    `Book not found: ${item.bookId}`
+                );
             }
 
             if (!book.isActive) {
-                throw new Error(`${book.name} is inactive.`);
+                throw new Error(
+                    `${book.name} is inactive.`
+                );
             }
 
             if (!book.isAvailable) {
-                throw new Error(`${book.name} is unavailable.`);
+                throw new Error(
+                    `${book.name} is unavailable.`
+                );
             }
 
-            if (!book.availableForRent) {
-                throw new Error(`${book.name} is not available for rent.`);
+            const quantity = Number(item.quantity || 1);
+
+            if (quantity < 1) {
+                throw new Error(
+                    "Item quantity must be at least 1."
+                );
             }
 
-            // ================= Rental Calculation =================
+            // =================================================
+            // BASE ORDER ITEM
+            // =================================================
 
-            let rentalPrice = 0;
-            let rentalDuration = 0;
-
-            const rentStartDate = new Date();
-            const expectedReturnDate = new Date(rentStartDate);
-
-            switch (item.rentalType) {
-                case "day":
-                    rentalPrice = Number(book.rentalPricePerDay);
-                    rentalDuration = 1;
-                    expectedReturnDate.setDate(expectedReturnDate.getDate() + 1);
-                    break;
-
-                case "week":
-                    rentalPrice = Number(book.rentalPricePerWeek);
-                    rentalDuration = 7;
-                    expectedReturnDate.setDate(expectedReturnDate.getDate() + 7);
-                    break;
-
-                case "month":
-                    rentalPrice = Number(book.rentalPricePerMonth);
-                    rentalDuration = 30;
-                    expectedReturnDate.setDate(expectedReturnDate.getDate() + 30);
-                    break;
-
-                default:
-                    throw new Error("Invalid rental type.");
-            }
-
-            calculatedRentalAmount += rentalPrice * item.quantity;
-
-            calculatedSecurityDeposit += Number(book.securityDeposit) * item.quantity;
-
-            orderItems.push({
+            const orderItem: any = {
                 bookId: new mongoose.Types.ObjectId(book._id),
 
-                sellerId: new mongoose.Types.ObjectId(book.sellerId),
+                sellerId: new mongoose.Types.ObjectId(
+                    book.sellerId
+                ),
 
-                quantity: item.quantity,
+                quantity,
 
-                itemStatus: OrderStatus.PENDING,
+                itemStatus: ItemStatus.PENDING,
 
-                rental: {
+                rental: null,
+
+                deposit: null,
+
+                shipmentDetails: [],
+            };
+
+            // =================================================
+            // RENT ORDER
+            // =================================================
+
+            if (orderType === OrderType.RENT) {
+                if (!book.availableForRent) {
+                    throw new Error(
+                        `${book.name} is not available for rent.`
+                    );
+                }
+
+                let rentalPrice = 0;
+                let rentalDuration = 0;
+
+                const rentStartDate = new Date();
+
+                const expectedReturnDate = new Date(
+                    rentStartDate
+                );
+
+                switch (item.rentalType) {
+                    case "day":
+                        rentalPrice = Number(
+                            book.rentalPricePerDay
+                        );
+
+                        rentalDuration = 1;
+
+                        expectedReturnDate.setDate(
+                            expectedReturnDate.getDate() + 1
+                        );
+
+                        break;
+
+                    case "week":
+                        rentalPrice = Number(
+                            book.rentalPricePerWeek
+                        );
+
+                        rentalDuration = 7;
+
+                        expectedReturnDate.setDate(
+                            expectedReturnDate.getDate() + 7
+                        );
+
+                        break;
+
+                    case "month":
+                        rentalPrice = Number(
+                            book.rentalPricePerMonth
+                        );
+
+                        rentalDuration = 30;
+
+                        expectedReturnDate.setDate(
+                            expectedReturnDate.getDate() + 30
+                        );
+
+                        break;
+
+                    default:
+                        throw new Error(
+                            `Invalid rental type for ${book.name}.`
+                        );
+                }
+
+                if (!rentalPrice || rentalPrice <= 0) {
+                    throw new Error(
+                        `Rental price is not configured for ${book.name}.`
+                    );
+                }
+
+                const securityDeposit = Number(
+                    book.securityDeposit || 0
+                );
+
+                calculatedItemAmount +=
+                    rentalPrice * quantity;
+
+                calculatedSecurityDeposit +=
+                    securityDeposit * quantity;
+
+                orderItem.rental = {
                     rentalPrice,
 
-                    securityDeposit: Number(book.securityDeposit),
+                    securityDeposit,
 
                     rentalDuration,
 
@@ -170,12 +405,12 @@ export const createOrderService = async (orderData: any) => {
                     extendedUntil: null,
 
                     lateFee: 0,
-                },
+                };
 
-                deposit: {
-                    amount: Number(book.securityDeposit),
+                orderItem.deposit = {
+                    amount: securityDeposit,
 
-                    status: "pending",
+                    status: DepositStatus.PENDING,
 
                     refundedAmount: 0,
 
@@ -184,74 +419,343 @@ export const createOrderService = async (orderData: any) => {
                     deductionReason: "",
 
                     refundedDate: null,
-                },
-            });
+                };
+            }
+
+
+
+            // =================================================
+            // AUCTION ORDER
+            // =================================================
+
+            // =================================================
+            // AUCTION ORDER
+            // =================================================
+
+            if (orderType === OrderType.AUCTION) {
+                // Auction quantity should always be one
+                if (quantity !== 1) {
+                    throw new Error(
+                        "Auction order quantity must be 1."
+                    );
+                }
+
+                if (!book?.auctionId) {
+                    throw new Error(
+                        `Auction ID not found for book: ${book.name}`
+                    );
+                }
+
+                // =============================================
+                // GET AUCTION DETAILS FROM AUCTION SERVICE
+                // =============================================
+
+                const auctionResponse =
+                    await getAllAuctionBidsService(
+                        book.auctionId.toString()
+                    );
+
+
+
+                // =============================================
+                // VALIDATE AUCTION RESPONSE
+                // =============================================
+
+                const auctionData =
+                    (auctionResponse as any)?.data ??
+                    auctionResponse;
+
+                if (!auctionData?.auction) {
+                    throw new Error(
+                        `Auction details not found for book: ${book.name}`
+                    );
+                }
+
+                if (
+                    !auctionData?.bids ||
+                    !Array.isArray(auctionData.bids) ||
+                    auctionData.bids.length === 0
+                ) {
+                    throw new Error(
+                        `No bids found for auction: ${book.auctionId}`
+                    );
+                }
+
+                // =============================================
+                // GET WINNING BID
+                // Rank 1 is considered the winning bid
+                // =============================================
+
+                const winningBid = auctionData.bids.find(
+                    (bid: any) =>
+                        bid.rank == 1
+
+                );
+
+                if (!winningBid) {
+                    throw new Error(
+                        "Winning bid not found for this auction."
+                    );
+                }
+
+                // =============================================
+                // VALIDATE WINNER
+                // =============================================
+
+                const winnerId =
+                    winningBid?.user?.userId;
+
+                if (!winnerId) {
+                    throw new Error(
+                        "Winner details not found for this auction."
+                    );
+                }
+
+                if (
+                    winnerId.toString() !==
+                    userId.toString()
+                ) {
+                    throw new Error(
+                        "Only the auction winner can create this order."
+                    );
+                }
+
+                // =============================================
+                // VALIDATE WINNING BID AMOUNT
+                // =============================================
+
+                const winningAmount = Number(
+                    winningBid.bidPrice
+                );
+
+                if (
+                    !winningAmount ||
+                    winningAmount <= 0
+                ) {
+                    throw new Error(
+                        "Invalid winning bid amount."
+                    );
+                }
+
+                // =============================================
+                // VALIDATE AUCTION BOOK
+                // =============================================
+
+                if (
+                    auctionData.auction.bookId.toString() !==
+                    book._id.toString()
+                ) {
+                    throw new Error(
+                        "Auction book does not match the order book."
+                    );
+                }
+
+                // =============================================
+                // CALCULATE AUCTION AMOUNT
+                // =============================================
+
+                calculatedItemAmount +=
+                    winningAmount;
+
+                // =============================================
+                // CREATE AUCTION DETAILS
+                // =============================================
+
+                formattedAuctionDetails = {
+                    auctionId: new mongoose.Types.ObjectId(
+                        auctionData.auction._id
+                    ),
+
+                    winningBidId:
+                        new mongoose.Types.ObjectId(
+                            winningBid._id
+                        ),
+
+                    winningBidAmount:
+                        winningAmount,
+
+                    winnerId:
+                        new mongoose.Types.ObjectId(
+                            winnerId
+                        ),
+
+                    // Since the response does not contain
+                    // a completed/won date, we use the
+                    // order creation time
+                    wonAt: new Date(),
+                };
+            }
+
+            // =================================================
+            // ADD ORDER ITEM
+            // =================================================
+
+            orderItems.push(orderItem);
         }
 
-        // ================= Amount Validation =================
+        // =====================================================
+        // AMOUNT CALCULATION
+        // =====================================================
+
+        const deliveryFee = Number(
+            amount?.deliveryFee || 0
+        );
+
+        const discount = Number(
+            amount?.discount || 0
+        );
+
+        const tax = Number(
+            amount?.tax || 0
+        );
 
         const calculatedTotal =
-            calculatedRentalAmount +
+            calculatedItemAmount +
             calculatedSecurityDeposit +
-            Number(amount.deliveryFee) +
-            Number(amount.tax) -
-            Number(amount.discount);
+            deliveryFee +
+            tax -
+            discount;
 
-        if (Number(amount.rentalAmount) !== calculatedRentalAmount) {
-            throw new Error(`Rental Amount mismatch. Expected ${calculatedRentalAmount}`);
+        // =====================================================
+        // AMOUNT VALIDATION
+        // =====================================================
+
+        // The item amount is calculated by the backend
+        // This validation is optional because frontend
+        // doesn't need to send itemAmount.
+
+        if (
+            amount?.itemAmount !== undefined &&
+            Number(amount.itemAmount) !==
+            calculatedItemAmount
+        ) {
+            throw new Error(
+                `Item Amount mismatch. Expected ${calculatedItemAmount}`
+            );
         }
 
-        if (Number(amount.securityDeposit) !== calculatedSecurityDeposit) {
-            throw new Error(`Security Deposit mismatch. Expected ${calculatedSecurityDeposit}`);
+        if (
+            amount?.securityDeposit !== undefined &&
+            Number(amount.securityDeposit) !==
+            calculatedSecurityDeposit
+        ) {
+            throw new Error(
+                `Security Deposit mismatch. Expected ${calculatedSecurityDeposit}`
+            );
         }
 
-        if (Number(amount.totalAmount) !== calculatedTotal) {
-            throw new Error(`Total Amount mismatch. Expected ${calculatedTotal}`);
+        if (
+            amount?.totalAmount !== undefined &&
+            Number(amount.totalAmount) !==
+            calculatedTotal
+        ) {
+            throw new Error(
+                `Total Amount mismatch. Expected ${calculatedTotal}`
+            );
         }
 
-        // Continue with Order Creation in Part 2B...
-        // ================= Generate Order Number =================
+        // =====================================================
+        // GENERATE ORDER NUMBER
+        // =====================================================
 
         const orderNumber = `ORD${Date.now()}`;
 
-        // ================= Conditional COD Payment Status =================
-        // Checks if payment method is COD (case-insensitive)
-        const isCOD = payment.paymentMethod?.toUpperCase() === "COD";
+        // =====================================================
+        // PAYMENT VALIDATION
+        // =====================================================
 
-        const paymentStatus = isCOD ? PaymentStatus.PENDING : PaymentStatus.SUCCESS;
-        const paidAt = isCOD ? null : new Date();
+        if (!payment?.paymentMethod) {
+            throw new Error(
+                "Payment method is required."
+            );
+        }
 
-        // ================= Create Order =================
+        const paymentMethod =
+            payment.paymentMethod.toUpperCase();
+
+        const isCOD =
+            paymentMethod === PaymentMethod.COD;
+
+        const isCash =
+            paymentMethod === PaymentMethod.COD;
+
+        const requiresOnlineTransaction =
+            !isCOD && !isCash;
+
+        if (
+            requiresOnlineTransaction &&
+            !payment.transactionId
+        ) {
+            throw new Error(
+                "Transaction ID is required for online payments."
+            );
+        }
+
+        const paymentStatus =
+            isCOD || isCash
+                ? PaymentStatus.PENDING
+                : PaymentStatus.SUCCESS;
+
+        const paidAt =
+            requiresOnlineTransaction
+                ? new Date()
+                : null;
+
+        // =====================================================
+        // CREATE ORDER
+        // =====================================================
 
         const order = await Order.create({
             orderNumber,
 
+            orderType,
+
             userId,
 
             items: orderItems,
+
+            // Automatically retrieved auction details
+            auctionDetails:
+                formattedAuctionDetails,
 
             shippingAddress,
 
             billingAddress,
 
             payment: {
-                paymentMethod: payment.paymentMethod,
-                paymentStatus: paymentStatus,
-                transactionId: isCOD ? null : payment.transactionId,
-                paidAt: paidAt,
+                paymentMethod,
+
+                paymentStatus,
+
+                transactionId:
+                    requiresOnlineTransaction
+                        ? payment.transactionId
+                        : null,
+
+                paidAt,
             },
 
             amount: {
-                rentalAmount: calculatedRentalAmount,
-                securityDeposit: calculatedSecurityDeposit,
-                deliveryFee: Number(amount.deliveryFee),
-                discount: Number(amount.discount),
-                tax: Number(amount.tax),
-                totalAmount: calculatedTotal,
+                itemAmount:
+                    calculatedItemAmount,
+
+                securityDeposit:
+                    calculatedSecurityDeposit,
+
+                deliveryFee,
+
+                discount,
+
+                tax,
+
+                totalAmount:
+                    calculatedTotal,
+
                 refundAmount: 0,
             },
 
-            orderStatus: OrderStatus.PENDING,
+            orderStatus:
+                OrderStatus.PENDING,
 
             createdBy,
 
@@ -260,54 +764,144 @@ export const createOrderService = async (orderData: any) => {
             isActive: true,
         });
 
-        // ================= Get Created Order =================
+        // =====================================================
+        // CREATE TRANSACTION
+        // =====================================================
+        console.log('dkjsfnjksdjkfjdsjfnj')
+        if (requiresOnlineTransaction) {
+            const transactionBreakup =
+                createTransactionBreakup(
+                    order.items,
+                    {
+                        itemAmount:
+                            calculatedItemAmount,
 
-        const createdOrder: any = await Order.findById(order._id)
-            .populate("items.bookId", "name author publisher language isbn edition coverImage")
-            .populate("items.sellerId", "firstName lastName")
-            .populate("userId", "firstName lastName email phone");
+                        securityDeposit:
+                            calculatedSecurityDeposit,
 
-        if (!createdOrder) {
-            throw new Error("Order created but could not be retrieved.");
+                        deliveryFee,
+
+                        discount,
+
+                        tax,
+
+                        totalAmount:
+                            calculatedTotal,
+                    }
+                );
+
+            await createTransaction({
+                transactionId:
+                    payment.transactionId,
+
+                orderId: order._id,
+
+                userId,
+
+                transactionType:
+                    TransactionType.PAYMENT,
+
+                totalAmount:
+                    calculatedTotal,
+
+                paymentMethod,
+
+                paymentStatus:
+                    TransactionStatus.SUCCESS,
+
+                gatewayTransactionId:
+                    payment.transactionId,
+
+                breakup:
+                    transactionBreakup,
+            });
         }
 
-        // ================= Send Order Email =================
+        // =====================================================
+        // GET CREATED ORDER
+        // =====================================================
 
-        // ================= Send Order Email =================
+        const createdOrder: any =
+            await Order.findById(order._id)
+                .populate(
+                    "items.bookId",
+                    "name author publisher language isbn edition coverImage"
+                )
+                .populate(
+                    "items.sellerId",
+                    "firstName lastName"
+                )
+                .populate(
+                    "userId",
+                    "firstName lastName email phone"
+                )
+                .populate(
+                    "auctionDetails.auctionId"
+                );
 
-        const createdUser: any = createdOrder.userId;
+        if (!createdOrder) {
+            throw new Error(
+                "Order created but could not be retrieved."
+            );
+        }
+
+        // =====================================================
+        // SEND ORDER CONFIRMATION EMAIL
+        // =====================================================
+
+        const createdUser: any =
+            createdOrder.userId;
 
         if (createdUser?.email) {
             try {
-                const orderId = createdOrder._id.toString();
+                const orderId =
+                    createdOrder._id.toString();
 
-                const bookId = createdOrder.items?.[0]?.bookId?._id
-                    ? createdOrder.items[0].bookId._id.toString()
-                    : createdOrder.items?.[0]?.bookId?.toString();
+                const bookId =
+                    createdOrder.items?.[0]?.bookId?._id
+                        ? createdOrder.items[0]
+                            .bookId._id.toString()
+                        : createdOrder.items?.[0]?.bookId?.toString();
 
-                const trackingUrl = `https://fe-book-rental-host.onrender.com/order-details?orderId=${orderId}&bookId=${bookId}`;
+                const trackingUrl =
+                    `${process.env.FRONTEND_HOST}` +
+                    `/order-details?orderId=${orderId}` +
+                    `&bookId=${bookId}`;
 
-                const html = compileTemplate("orderConfirmationEmail.hbs", {
-                    title: "Order Confirmation",
-                    orderNumber: createdOrder.orderNumber,
-                    orderId,
-                    trackingUrl,
-                    year: new Date().getFullYear(),
-                });
+                const html = compileTemplate(
+                    "orderConfirmationEmail.hbs",
+                    {
+                        title:
+                            "Order Confirmation",
+
+                        orderNumber:
+                            createdOrder.orderNumber,
+
+                        orderId,
+
+                        trackingUrl,
+
+                        orderType:
+                            createdOrder.orderType,
+
+                        year:
+                            new Date().getFullYear(),
+                    }
+                );
 
                 await sendEmail(
                     [
                         {
-                            Email: user.email,
-                            Name: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+                            Email:
+                                createdUser.email,
+
+                            Name:
+                                `${createdUser.firstName || ""} ` +
+                                `${createdUser.lastName || ""}`.trim(),
                         },
                     ],
                     "Order Confirmation",
                     html
-                );
-
-                console.log(
-                    `Order confirmation email sent to ${createdUser.email}`
                 );
             } catch (emailError) {
                 console.error(
@@ -317,34 +911,54 @@ export const createOrderService = async (orderData: any) => {
             }
         }
 
-        // ================= Return Order =================
-
         return createdOrder;
+
     } catch (error) {
         throw error;
     }
 };
 
-export const getOrderByUserIdService = async (userId: string, query: any = {}) => {
+
+export const getOrderByUserIdService = async (
+    userId: string,
+    query: any = {}
+) => {
     try {
+        // 1. Destructure all filter params safely from the incoming query first
+        const { orderStatus, orderType } = query;
+        
+        // 2. Compute pagination limits safely
         const { skip, limit, page } = buildPaginationQuery(query);
 
-        const { orderStatus } = query;
+        // ================= FILTER =================
 
         const filter: any = {
-            userId,
+            userId: new Types.ObjectId(userId), // Ensure 'new' keyword is present
             isActive: true,
         };
 
-        if (orderStatus && orderStatus !== "ALL") {
+        console.log('Incoming Filters:', { orderStatus, orderType });
+
+        // 3. Robust clean-up check handling case-insensitivity (.toUpperCase())
+        if (orderStatus && String(orderStatus).toUpperCase() !== "ALL") {
+            // If your DB expects uppercase enums, force uppercase here: String(orderStatus).toUpperCase()
             filter.orderStatus = orderStatus;
         }
 
+        if (orderType && String(orderType).toUpperCase() !== "ALL") {
+            // If your DB expects uppercase enums, force uppercase here: String(orderType).toUpperCase()
+            filter.orderType = orderType;
+        }
+
+        console.log('Final MongoDB Query Filter Object:', filter);
+
+        // ================= PAGINATION =================
+
         const totalRecords = await Order.countDocuments(filter);
-
         const totalPages = Math.ceil(totalRecords / limit);
-
         const hasMore = page < totalPages;
+
+        // ================= GET ORDERS =================
 
         const orders = await Order.find(filter)
             .populate({
@@ -356,52 +970,69 @@ export const getOrderByUserIdService = async (userId: string, query: any = {}) =
             .limit(limit)
             .lean();
 
-        const formattedOrders = orders.map((order: any) => ({
-            orderId: order._id,
+        // ================= FORMAT ORDERS =================
+        const formattedOrders = orders.map((order: any) => {
+            const isAuctionOrder = order.orderType === OrderType.AUCTION;
 
-            orderNumber: order.orderNumber,
+            return {
+                orderId: order._id,
+                orderNumber: order.orderNumber,
+                orderType: order.orderType,
+                orderDate: order.createdAt,
+                orderStatus: order.orderStatus,
+                paymentStatus: order.payment?.paymentStatus,
+                totalAmount: order.amount?.totalAmount,
+                totalBooks: order.items?.length || 0,
 
-            orderDate: order.createdAt,
+                // ================= AUCTION DETAILS =================
+                auctionDetails: isAuctionOrder && order.auctionDetails
+                    ? {
+                        auctionId: order.auctionDetails.auctionId,
+                        winningBidId: order.auctionDetails.winningBidId,
+                        winningBidAmount: order.auctionDetails.winningBidAmount,
+                        winnerId: order.auctionDetails.winnerId,
+                        wonAt: order.auctionDetails.wonAt,
+                    }
+                    : null,
 
-            orderStatus: order.orderStatus,
+                // ================= ITEMS =================
+                items: (order.items || []).map((item: any) => {
+                    const rentalDuration = item.rental?.rentalDuration;
+                    let rentalType = null;
 
-            paymentStatus: order.payment.paymentStatus,
+                    if (rentalDuration === 1) {
+                        rentalType = "day";
+                    } else if (rentalDuration === 7) {
+                        rentalType = "week";
+                    } else if (rentalDuration) {
+                        rentalType = "month";
+                    }
 
-            totalAmount: order.amount.totalAmount,
+                    const rentalPrice = Number(item.rental?.rentalPrice || 0);
+                    const securityDeposit = Number(item.rental?.securityDeposit || 0);
+                    const quantity = Number(item.quantity || 1);
 
-            totalBooks: order.items.length,
+                    return {
+                        bookId: item.bookId?._id,
+                        name: item.bookId?.name,
+                        author: item.bookId?.author,
+                        coverImage: item.bookId?.coverImage,
+                        quantity,
+                        itemStatus: item.itemStatus,
 
-            items: order.items.map((item: any) => ({
-                bookId: item.bookId?._id,
+                        // ================= RENT DETAILS =================
+                        rentalType,
+                        rentalPrice,
+                        securityDeposit,
+                        totalPrice: quantity * (rentalPrice + securityDeposit),
+                    };
+                }),
+            };
+        });
 
-                name: item.bookId?.name,
-
-                author: item.bookId?.author,
-
-                coverImage: item.bookId?.coverImage,
-
-                quantity: item.quantity,
-
-                itemStatus: item.itemStatus,
-
-                rentalType:
-                    item.rental.rentalDuration === 1
-                        ? "day"
-                        : item.rental.rentalDuration === 7
-                            ? "week"
-                            : "month",
-
-                rentalPrice: item.rental.rentalPrice,
-
-                securityDeposit: item.rental.securityDeposit,
-
-                totalPrice: item.quantity * (item.rental.rentalPrice + item.rental.securityDeposit),
-            })),
-        }));
-
+        // ================= RESPONSE =================
         return {
             orders: formattedOrders,
-
             meta: {
                 totalRecords,
                 totalPages,
@@ -410,7 +1041,9 @@ export const getOrderByUserIdService = async (userId: string, query: any = {}) =
                 hasMore,
             },
         };
+
     } catch (error) {
+        console.error("Error in getOrderByUserIdService:", error);
         throw error;
     }
 };
@@ -1102,11 +1735,24 @@ export const updateSellerOrderItemStatusService = async (
     throw error;
 };
 
-export const getOrderBookDetailsService = async (orderId: string, bookId: string) => {
+export const getOrderBookDetailsService = async (
+    orderId: string,
+    bookId: string
+) => {
     const order: any = await Order.findById(orderId)
         .populate({
             path: "items.bookId",
-            select: "name author publisher language isbn categoryId edition coverImage",
+            select: `
+                name
+                author
+                publisher
+                language
+                isbn
+                categoryId
+                edition
+                coverImage
+                listingType
+            `,
             populate: {
                 path: "categoryId",
                 select: "name",
@@ -1121,11 +1767,28 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
         throw new Error("Order not found.");
     }
 
-    const orderItem = order.items.find((item: any) => item.bookId?._id.toString() === bookId);
-    console.log('hhhd', orderItem)
+    const orderItem = order.items.find(
+        (item: any) =>
+            item.bookId?._id?.toString() === bookId
+    );
+
     if (!orderItem) {
         throw new Error("Book not found in this order.");
     }
+
+    // =====================================================
+    // CHECK AUCTION
+    // =====================================================
+
+    const isAuctionOrder =
+        order.orderType === OrderType.AUCTION;
+
+    const isAuctionBook =
+        orderItem.bookId?.listingType === "AUCTION" ||
+        orderItem.bookId?.listingType === "auction";
+
+    const isAuction =
+        isAuctionOrder || isAuctionBook;
 
     return {
         orderId: order._id,
@@ -1134,90 +1797,208 @@ export const getOrderBookDetailsService = async (orderId: string, bookId: string
 
         orderDate: order.createdAt,
 
+        // =================================================
+        // ORDER TYPE
+        // =================================================
+
+        orderType: order.orderType,
+
+        // =================================================
+        // AUCTION DETAILS
+        // =================================================
+
+        isAuction: isAuction,
+
+        isAuctionOrder: isAuctionOrder,
+
+        isAuctionBook: isAuctionBook,
+
         orderStatus: order.orderStatus,
 
         quantity: orderItem.quantity,
 
         itemStatus: orderItem.itemStatus,
+
         orderItemId: orderItem._id,
+
         book: {
             bookId: orderItem.bookId._id,
+
             name: orderItem.bookId.name,
+
             author: orderItem.bookId.author,
+
             publisher: orderItem.bookId.publisher,
+
             language: orderItem.bookId.language,
+
             isbn: orderItem.bookId.isbn,
-            category: orderItem.bookId.categoryId?.name,
+
+            category:
+                orderItem.bookId.categoryId?.name,
+
             edition: orderItem.bookId.edition,
+
             coverImage: orderItem.bookId.coverImage,
+
+            listingType:
+                orderItem.bookId.listingType,
         },
-        shipmentDetails: orderItem.shipmentDetails || [],
+
+        shipmentDetails:
+            orderItem.shipmentDetails || [],
+
         seller: {
             _id: orderItem.sellerId?._id,
+
             name: orderItem.sellerId?.name,
         },
 
         rental: {
-            rentalPrice: orderItem.rental.rentalPrice,
-            securityDeposit: orderItem.rental.securityDeposit,
-            rentalDuration: orderItem.rental.rentalDuration,
-            rentStartDate: orderItem.rental.rentStartDate,
-            expectedReturnDate: orderItem.rental.expectedReturnDate,
-            actualReturnDate: orderItem.rental.actualReturnDate,
-            extensionCount: orderItem.rental.extensionCount,
-            maximumExtensions: orderItem.rental.maximumExtensions,
-            extendedUntil: orderItem.rental.extendedUntil,
-            lateFee: orderItem.rental.lateFee,
+            rentalPrice:
+                orderItem.rental?.rentalPrice,
+
+            securityDeposit:
+                orderItem.rental?.securityDeposit,
+
+            rentalDuration:
+                orderItem.rental?.rentalDuration,
+
+            rentStartDate:
+                orderItem.rental?.rentStartDate,
+
+            expectedReturnDate:
+                orderItem.rental?.expectedReturnDate,
+
+            actualReturnDate:
+                orderItem.rental?.actualReturnDate,
+
+            extensionCount:
+                orderItem.rental?.extensionCount,
+
+            maximumExtensions:
+                orderItem.rental?.maximumExtensions,
+
+            extendedUntil:
+                orderItem.rental?.extendedUntil,
+
+            lateFee:
+                orderItem.rental?.lateFee,
         },
 
         shippingAddress: {
-            name: order.shippingAddress.name,
-            phone: order.shippingAddress.phone,
-            addressLine1: order.shippingAddress.addressLine1,
-            addressLine2: order.shippingAddress.addressLine2,
-            landmark: order.shippingAddress.landmark,
-            city: order.shippingAddress.city,
-            state: order.shippingAddress.state,
-            pincode: order.shippingAddress.pincode,
-            country: order.shippingAddress.country,
+            name:
+                order.shippingAddress?.name,
+
+            phone:
+                order.shippingAddress?.phone,
+
+            addressLine1:
+                order.shippingAddress?.addressLine1,
+
+            addressLine2:
+                order.shippingAddress?.addressLine2,
+
+            landmark:
+                order.shippingAddress?.landmark,
+
+            city:
+                order.shippingAddress?.city,
+
+            state:
+                order.shippingAddress?.state,
+
+            pincode:
+                order.shippingAddress?.pincode,
+
+            country:
+                order.shippingAddress?.country,
         },
 
         billingAddress: {
-            name: order.billingAddress.name,
-            phone: order.billingAddress.phone,
-            addressLine1: order.billingAddress.addressLine1,
-            addressLine2: order.billingAddress.addressLine2,
-            landmark: order.billingAddress.landmark,
-            city: order.billingAddress.city,
-            state: order.billingAddress.state,
-            pincode: order.billingAddress.pincode,
-            country: order.billingAddress.country,
+            name:
+                order.billingAddress?.name,
+
+            phone:
+                order.billingAddress?.phone,
+
+            addressLine1:
+                order.billingAddress?.addressLine1,
+
+            addressLine2:
+                order.billingAddress?.addressLine2,
+
+            landmark:
+                order.billingAddress?.landmark,
+
+            city:
+                order.billingAddress?.city,
+
+            state:
+                order.billingAddress?.state,
+
+            pincode:
+                order.billingAddress?.pincode,
+
+            country:
+                order.billingAddress?.country,
         },
 
         payment: {
-            paymentMethod: order.payment.paymentMethod,
-            paymentStatus: order.payment.paymentStatus,
-            transactionId: order.payment.transactionId,
-            paidAt: order.payment.paidAt,
+            paymentMethod:
+                order.payment?.paymentMethod,
+
+            paymentStatus:
+                order.payment?.paymentStatus,
+
+            transactionId:
+                order.payment?.transactionId,
+
+            paidAt:
+                order.payment?.paidAt,
         },
 
         priceSummary: {
-            rentalAmount: order.amount.rentalAmount,
-            securityDeposit: order.amount.securityDeposit,
-            deliveryFee: order.amount.deliveryFee,
-            discount: order.amount.discount,
-            tax: order.amount.tax,
-            totalAmount: order.amount.totalAmount,
-            refundAmount: order.amount.refundAmount,
+            rentalAmount:
+                order.amount?.itemAmount,
+
+            securityDeposit:
+                order.amount?.securityDeposit,
+
+            deliveryFee:
+                order.amount?.deliveryFee,
+
+            discount:
+                order.amount?.discount,
+
+            tax:
+                order.amount?.tax,
+
+            totalAmount:
+                order.amount?.totalAmount,
+
+            refundAmount:
+                order.amount?.refundAmount,
         },
 
         deposit: {
-            amount: orderItem.deposit.amount,
-            status: orderItem.deposit.status,
-            refundedAmount: orderItem.deposit.refundedAmount,
-            deductionAmount: orderItem.deposit.deductionAmount,
-            deductionReason: orderItem.deposit.deductionReason,
-            refundedDate: orderItem.deposit.refundedDate,
+            amount:
+                orderItem.deposit?.amount,
+
+            status:
+                orderItem.deposit?.status,
+
+            refundedAmount:
+                orderItem.deposit?.refundedAmount,
+
+            deductionAmount:
+                orderItem.deposit?.deductionAmount,
+
+            deductionReason:
+                orderItem.deposit?.deductionReason,
+
+            refundedDate:
+                orderItem.deposit?.refundedDate,
         },
     };
 };
@@ -1230,7 +2011,7 @@ export const updateOrderByIdService = async (
     orderId: string,
     updateData: any
 ) => {
- 
+
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -1238,7 +2019,44 @@ export const updateOrderByIdService = async (
         error.statusCode = StatusCode.Not_Found;
         throw error;
     }
+    if (order.orderType === OrderType.AUCTION) {
+        let isReturnRequested = false;
 
+        if (
+            updateData?.itemStatus ===
+            ItemStatus.RETURN_REQUESTED
+        ) {
+            isReturnRequested = true;
+        }
+
+        if (Array.isArray(updateData?.items)) {
+            isReturnRequested =
+                updateData.items.some(
+                    (item: any) =>
+                        item?.itemStatus ===
+                        ItemStatus.RETURN_REQUESTED
+                );
+        }
+
+        if (Array.isArray(updateData?.itemUpdates)) {
+            isReturnRequested =
+                updateData.itemUpdates.some(
+                    (item: any) =>
+                        item?.itemStatus ===
+                        ItemStatus.RETURN_REQUESTED
+                );
+        }
+
+        if (isReturnRequested) {
+            const error: any = new Error(
+                "Return is not allowed for auction orders."
+            );
+
+            error.statusCode = StatusCode.Bad_Request;
+
+            throw error;
+        }
+    }
     const previousItemStatuses = new Map(
         order.items.map((item: any) => [
             item._id.toString(),
@@ -1501,9 +2319,9 @@ export const updateOrderByIdService = async (
 
         if (
             previousStatus !==
-                ItemStatus.OUT_FOR_DELIVERY &&
+            ItemStatus.OUT_FOR_DELIVERY &&
             item.itemStatus ===
-                ItemStatus.OUT_FOR_DELIVERY
+            ItemStatus.OUT_FOR_DELIVERY
         ) {
             await sendOrderStatusEmail(
                 order,
@@ -1522,7 +2340,7 @@ export const updateOrderByIdService = async (
     if (
         currentOutForDeliveryEvent &&
         currentOutForDeliveryEvent !==
-            previousOutForDeliveryEvent
+        previousOutForDeliveryEvent
     ) {
         const outForDeliveryItem =
             order.items.find((item: any) => {
@@ -1533,9 +2351,9 @@ export const updateOrderByIdService = async (
 
                 return (
                     previousStatus !==
-                        ItemStatus.OUT_FOR_DELIVERY &&
+                    ItemStatus.OUT_FOR_DELIVERY &&
                     item.itemStatus ===
-                        ItemStatus.OUT_FOR_DELIVERY
+                    ItemStatus.OUT_FOR_DELIVERY
                 );
             });
 

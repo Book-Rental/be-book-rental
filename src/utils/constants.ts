@@ -26,6 +26,7 @@ export const Messages = {
     // User
     // =========================
     User_Created: "User Created successfully!",
+    Users_Fetched: "Users fetched successfully!",
     User_Updated: "User Updated successfully!",
     User_Deleted: "User Deleted successfully!",
     User_Not_Available: "User Not Available",

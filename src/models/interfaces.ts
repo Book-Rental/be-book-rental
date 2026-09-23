@@ -40,6 +40,7 @@ export interface IUserAddress {
 export enum UserType {
     CUSTOMER = "customer",
     ADMIN = "admin",
+    SUPERADMIN = "superadmin",
 }
 
 export enum Status {

@@ -85,7 +85,7 @@ export const formatOrderRecords = (rawOrders: any[]): FormattedOrder[] => {
         orderStatus: order.orderStatus,
         paymentStatus: order.payment?.paymentStatus,
         totalAmount: order.amount?.totalAmount,
-
+        orderType: order.orderType,
         items: order.items.map((item: any) => {
             const matchedBook = order.populatedBooks?.find(
                 (b: any) => b._id.toString() === item.bookId?.toString()

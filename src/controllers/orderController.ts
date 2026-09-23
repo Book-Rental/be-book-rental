@@ -18,6 +18,7 @@ import { Messages } from "../utils/constants";
 import { failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
 import { Request, Response } from "express";
+import { OrderType } from "../models/Order";
 
 //get all orders
 export const getAllOrders = async (req: Request, res: Response): Promise<void> => {
@@ -47,9 +48,29 @@ export const getOrderById = async (req: Request, res: Response): Promise<void> =
 };
 
 //create Order
+
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { userId, items, shippingAddress, billingAddress, payment, amount } = req.body;
+        const {
+            userId,
+            items,
+            shippingAddress,
+            billingAddress,
+            payment,
+            amount,
+            orderType = OrderType.RENT,
+        } = req.body;
+
+        // ================= Order Type Validation =================
+
+        if (![OrderType.RENT, OrderType.AUCTION].includes(orderType)) {
+            failResponse(
+                res,
+                "Invalid Order Type. Allowed values are rent and auction.",
+                StatusCode.Bad_Request
+            );
+            return;
+        }
 
         // ================= User Validation =================
 
@@ -70,7 +91,19 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             return;
         }
 
+        // Auction order should contain only one book
+        if (orderType === OrderType.AUCTION && items.length !== 1) {
+            failResponse(
+                res,
+                "An auction order must contain exactly one book.",
+                StatusCode.Bad_Request
+            );
+            return;
+        }
+
         for (const item of items) {
+            // ================= Book Validation =================
+
             if (!item.bookId) {
                 failResponse(res, "Book Id is required.", StatusCode.Bad_Request);
                 return;
@@ -81,23 +114,43 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
                 return;
             }
 
-            if (!item.quantity || item.quantity <= 0) {
+            // ================= Quantity Validation =================
+
+            if (
+                item.quantity === undefined ||
+                item.quantity === null ||
+                typeof item.quantity !== "number" ||
+                item.quantity <= 0
+            ) {
                 failResponse(res, "Quantity should be greater than zero.", StatusCode.Bad_Request);
                 return;
             }
 
-            if (!item.rentalType) {
-                failResponse(res, "Rental Type is required.", StatusCode.Bad_Request);
-                return;
+            // ================= Rent Validation =================
+
+            if (orderType === OrderType.RENT) {
+                if (!item.rentalType) {
+                    failResponse(res, "Rental Type is required.", StatusCode.Bad_Request);
+                    return;
+                }
+
+                if (!["day", "week", "month"].includes(item.rentalType)) {
+                    failResponse(
+                        res,
+                        "Rental Type should be day, week or month.",
+                        StatusCode.Bad_Request
+                    );
+                    return;
+                }
             }
 
-            if (!["day", "week", "month"].includes(item.rentalType)) {
-                failResponse(
-                    res,
-                    "Rental Type should be day, week or month.",
-                    StatusCode.Bad_Request
-                );
-                return;
+            // ================= Auction Validation =================
+
+            if (orderType === OrderType.AUCTION) {
+                if (item.quantity !== 1) {
+                    failResponse(res, "Auction order quantity must be 1.", StatusCode.Bad_Request);
+                    return;
+                }
             }
         }
 
@@ -122,25 +175,17 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             return;
         }
 
-        const paymentMethods = [
-            "COD",
-            "UPI",
-            "CARD",
-            "NET_BANKING",
-            "GOOGLE_PAY",
-            "PHONE_PE"
-        ];
+        const paymentMethods = ["COD", "UPI", "CARD", "NET_BANKING", "GOOGLE_PAY", "PHONE_PE"];
 
         if (!payment.paymentMethod) {
             failResponse(res, "Payment Method is required.", StatusCode.Bad_Request);
             return;
         }
 
-        if (!paymentMethods.includes(payment.paymentMethod)) {
+        if (!paymentMethods.includes(payment.paymentMethod.toUpperCase())) {
             failResponse(res, "Invalid Payment Method.", StatusCode.Bad_Request);
             return;
         }
-
 
         // ================= Amount Validation =================
 
@@ -149,26 +194,33 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             return;
         }
 
-        if (amount.totalAmount <= 0) {
+        if (
+            amount.totalAmount !== undefined &&
+            (typeof amount.totalAmount !== "number" || amount.totalAmount <= 0)
+        ) {
             failResponse(res, "Invalid Total Amount.", StatusCode.Bad_Request);
             return;
         }
 
         // ================= Create Order =================
 
-        const order = await createOrderService(req.body);
+        const order = await createOrderService({
+            ...req.body,
+            orderType,
+        });
 
         successResponse(res, order, Messages.OrderCreated, StatusCode.Created);
     } catch (error: any) {
-        console.error(error);
+        console.error("Create Order Error:", error);
 
         failResponse(
             res,
-            error.message || Messages.Internal_Server_Error,
+            error?.message || Messages.Internal_Server_Error,
             StatusCode.Internal_Server_Error
         );
     }
 };
+
 //Get Order By User Id
 export const getOrderByUserId = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -358,9 +410,10 @@ export const updateSellerOrderItemStatus = async (req: Request, res: Response): 
 
         const result = await updateSellerOrderItemStatusService(sellerUserId, orderItemId, action);
 
-        const message = action === "approve"
-            ? Messages.Seller_Order_Item_Approved
-            : Messages.Seller_Order_Item_Rejected;
+        const message =
+            action === "approve"
+                ? Messages.Seller_Order_Item_Approved
+                : Messages.Seller_Order_Item_Rejected;
 
         successResponse(res, result, message, StatusCode.OK);
     } catch (error: any) {
@@ -405,9 +458,7 @@ export const getSellerOrderItemDetail = async (req: Request, res: Response): Pro
     }
 };
 
-
-
-//Update Order 
+//Update Order
 
 export const updateOrderById = async (req: Request, res: Response) => {
     try {
@@ -441,7 +492,6 @@ export const updateOrderById = async (req: Request, res: Response) => {
     }
 };
 
-
 export const getOrderByItemId = async (req: Request, res: Response) => {
     try {
         const orderId = req.params.orderId as string;
@@ -457,9 +507,9 @@ export const getOrderByItemId = async (req: Request, res: Response) => {
             return;
         }
 
-        const order = await getOrderByItemIdService(orderId, ItemId)
+        const order = await getOrderByItemIdService(orderId, ItemId);
 
-        successResponse(res, order, Messages.Order_Fetch_success, StatusCode.OK)
+        successResponse(res, order, Messages.Order_Fetch_success, StatusCode.OK);
     } catch (error: any) {
         failResponse(
             res,
@@ -467,4 +517,4 @@ export const getOrderByItemId = async (req: Request, res: Response) => {
             error.statusCode || StatusCode.Internal_Server_Error
         );
     }
-}
+};
