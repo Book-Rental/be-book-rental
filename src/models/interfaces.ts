@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
-import { AuctionStatus } from "./Auction";
+import { AuctionStatus } from "../helper/auctionStatus";
+
 
 export interface IBasicFields {
     isActive: boolean;
@@ -74,9 +75,23 @@ export interface ICategory {
 }
 
 export interface IAuction {
-    bidPrice: number;
-    buyNowPrice?: number;
-    duration: number;
-    startDate: Date; 
+    _id: Types.ObjectId;
+
     bookId: Types.ObjectId;
+
+    bidPrice: number;
+
+    buyNowPrice?: number;
+
+    duration: number;
+
+    startDate: Date;
+
+    isActive: boolean;
+
+    status: AuctionStatus;
+
+    createdAt: Date;
+
+    updatedAt: Date;
 }

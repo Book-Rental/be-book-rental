@@ -29,3 +29,18 @@ export const calculateAuctionStatus = (
 
     return AuctionStatus.COMPLETED;
 };
+
+export const getAuctionStatus = (
+    isActive: boolean,
+    startDate: Date | string,
+    duration: number
+): AuctionStatus => {
+    if (isActive === false) {
+        return AuctionStatus.CANCELLED;
+    }
+
+    return calculateAuctionStatus(
+        startDate,
+        duration
+    );
+};

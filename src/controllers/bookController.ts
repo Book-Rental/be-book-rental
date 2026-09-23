@@ -6,6 +6,7 @@ import { StatusCode } from "../utils/StatusCodes";
 import { Request, Response } from "express";
 import { uploadToCloudinary } from "../utils/UploadImage";
 import {
+    cancelAuctionService,
     createAuctionBookService,
     createBookService,
     deleteBookByIdService,
@@ -333,6 +334,43 @@ export const updateAuctionBook = async (
       message: error.message,
     });
   }
+};
+
+export const cancelAuction = async (
+    req: Request<{ auctionId: string }>,
+    res: Response
+) => {
+    try {
+        const { auctionId } = req.params;
+
+        const auction = await cancelAuctionService(auctionId);
+
+        return successResponse(
+            res,
+            auction,
+            "Auction cancelled successfully",
+            StatusCode.OK
+        );
+    } catch (err: unknown) {
+        console.error(
+            "Cancel Auction Controller Error:",
+            err
+        );
+
+        if (err instanceof Error) {
+            return failResponse(
+                res,
+                err.message,
+                StatusCode.Bad_Request
+            );
+        }
+
+        return failResponse(
+            res,
+            Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
+    }
 };
 
 export const getBookAuctionBidDetails = async (
