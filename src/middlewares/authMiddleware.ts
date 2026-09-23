@@ -23,11 +23,28 @@ export const auth = async (req: AuthRequest, res: Response, next: NextFunction) 
     }
 
     // 2. Fall back to standard User Cookie Token validation if no microservice header exists
-    let token: string | undefined = req.cookies[`${JWT_TOKEN_NAME}`];
+    let token: string | undefined
+
+
+const authorization = req.headers.authorization;
+
+if (authorization && authorization.startsWith("Bearer ")) {
+    token = authorization.substring(7);
+
+    console.log("Token received from Authorization header");
+}
+    if (!token) {
+    token = req.cookies?.[`${JWT_TOKEN_NAME}`];
+
+    if (token) {
+        console.log("Token received from HTTP-only cookie");
+    }
+}
 
     if (token) {
         try {
             const decoded = await verifyToken(token);
+                console.log("AUTHENTICATED USER:", decoded);
             // Attach user to the request object for your protected routes
             req.user = decoded;
             return next();

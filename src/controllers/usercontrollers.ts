@@ -17,6 +17,7 @@ import { StatusCode } from "../utils/StatusCodes";
 import { Messages, UserAddressFields } from "../utils/constants";
 import { uploadToCloudinary } from "../utils/UploadImage";
 import { checkExternalPincodeService } from "../helper/shipmentHelper";
+import { AuthRequest } from "../middlewares/authMiddleware";
 
 export interface UserQuery {
     search: string;
@@ -151,9 +152,15 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
 };
 
 // Get user By Id
-export const getUserById = async (req: Request, res: Response): Promise<void> => {
+export const getUserById = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const id = req.params.id as string;
+                let id = req.params.id as string;
+
+        // If ID is not present, get it from JWT
+        if (!id && req.user) {
+            const user = req.user as any;
+            id = user.id;
+        }
 
         const user: IUser | any = await getUserByIdService(id);
 
