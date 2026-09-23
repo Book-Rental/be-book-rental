@@ -137,83 +137,11 @@ const cpUpload = upload.fields([
  *         description: Internal server error
  */
 router.get("/", getAllBooks);
-
-
-/**
- * @swagger
- * /api/book/create:
- *   post:
- *     summary: Create a new book
- *     description: Create a new book
- *     tags:
- *       - Books
- *     operationId: createBook
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               title:
- *                 type: string
- *               description:
- *                 type: string
- *               author:
- *                 type: string
- *               price:
- *                 type: number
- *               coverImage:
- *                 type: string
- *                 format: binary
- *               images:
- *                 type: array
- *                 items:
- *                   type: string
- *                   format: binary
- *     responses:
- *       201:
- *         description: Book created successfully
- *       400:
- *         description: Invalid request
- *       401:
- *         description: Unauthorized
- */
-router.post(
-    "/create",
-    auth as any,
-    cpUpload,
-    createBook
-);
-
-
-/**
- * @swagger
- * /api/book/{id}:
- *   get:
- *     summary: Get book by ID
- *     description: Retrieve a single book using its ID
- *     tags:
- *       - Books
- *     operationId: getBookById
- *     parameters:
- *       - name: id
- *         in: path
- *         required: true
- *         description: Book ID
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Book retrieved successfully
- *       404:
- *         description: Book not found
- *       500:
- *         description: Internal server error
- */
+router.post("/create", cpUpload ,createBook);
 router.get("/:id", getBookById);
+router.get("/seller/:sellerId", getBooksBySellerId);
+router.delete("/:id",auth as any, deleteBookById);
+router.put("/update/:id",auth as any, cpUpload, updateBookById);
 
 
 /**

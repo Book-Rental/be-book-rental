@@ -1,7 +1,10 @@
 import mongoose from "mongoose";
-import Auction, { AuctionStatus } from "../models/Auction";
+import Auction from "../models/Auction";
 import AuctionBid from "../models/AuctionBid";
-import { calculateAuctionStatus } from "../helper/auctionStatus";
+import {
+    AuctionStatus,
+    getAuctionStatus,
+} from "../helper/auctionStatus";
 import Order from "../models/Order";
 
 export const createAuctionBidService = async (data: {
@@ -33,8 +36,9 @@ export const createAuctionBidService = async (data: {
         );
     }
 
-    // Calculate auction status dynamically
-    const status = calculateAuctionStatus(
+    // Calculate auction status
+    const status = getAuctionStatus(
+        auction.isActive,
         auction.startDate,
         auction.duration
     );
@@ -114,7 +118,8 @@ export const getAllAuctionBidsService = async (
 
     const pageNumber = Math.max(Number(page), 1);
     const limitNumber = Math.max(Number(limit), 1);
-    const skip = (pageNumber - 1) * limitNumber;
+    const skip =
+        (pageNumber - 1) * limitNumber;
 
     const [bids, total] = await Promise.all([
         AuctionBid.find({
@@ -141,63 +146,94 @@ export const getAllAuctionBidsService = async (
         bids.length > 0
             ? bids[0].bidPrice
             : auction.bidPrice;
-const book = auction.bookId as any;
-   return {
-    auction: {
-        _id: auction._id,
-        bookId: book._id,
-        bidPrice: auction.bidPrice,
-        buyNowPrice: auction.buyNowPrice,
-        duration: auction.duration,
-        startDate: auction.startDate,
-        currentBidPrice,
-    },
 
-    book: book,
-
-    bids: bids.map((bid, index) => {
-        const user = bid.userId as any;
-
-        const defaultAddress =
-            user?.addresses?.find(
-                (address: any) => address.isDefault
-            );
-
-        const address =
-            defaultAddress ??
-            user?.addresses?.[0];
-
-        return {
-            _id: bid._id,
-
-            rank: skip + index + 1,
-
-            user: {
-                userId: user?._id,
-                name: `${user?.firstName ?? ""} ${
-                    user?.lastName ?? ""
-                }`.trim(),
-                email: user?.email ?? "",
-                phone: address?.phone ?? "",
-            },
-
-            bidPrice: bid.bidPrice,
-        };
-    }),
-
-    pagination: {
-        page: pageNumber,
-        limit: limitNumber,
-        total,
-        totalPages: Math.ceil(
-            total / limitNumber
-        ),
-        hasNextPage:
-            pageNumber <
-            Math.ceil(total / limitNumber),
-        hasPreviousPage: pageNumber > 1,
-    },
+    const book = auction.bookId as unknown as {
+    _id: mongoose.Types.ObjectId;
+    name?: string;
+    description?: string;
+    coverImage?: string;
+    author?: string;
+    price?: number;
+    category?: unknown;
 };
+
+    const auctionStatus = getAuctionStatus(
+        auction.isActive,
+        auction.startDate,
+        auction.duration
+    );
+
+    return {
+        auction: {
+            _id: auction._id,
+            bookId: book._id,
+            bidPrice: auction.bidPrice,
+            buyNowPrice: auction.buyNowPrice,
+            duration: auction.duration,
+            startDate: auction.startDate,
+            isActive: auction.isActive,
+            status: auctionStatus,
+            currentBidPrice,
+        },
+
+        book,
+
+        bids: bids.map((bid, index) => {
+            const user = bid.userId as {
+                _id?: mongoose.Types.ObjectId;
+                firstName?: string;
+                lastName?: string;
+                email?: string;
+                addresses?: Array<{
+                    isDefault?: boolean;
+                    phone?: string;
+                }>;
+            };
+
+            const defaultAddress =
+                user?.addresses?.find(
+                    (address) =>
+                        address.isDefault
+                );
+
+            const address =
+                defaultAddress ??
+                user?.addresses?.[0];
+
+            return {
+                _id: bid._id,
+
+                rank: skip + index + 1,
+
+                user: {
+                    userId: user?._id,
+                    name: `${user?.firstName ?? ""} ${
+                        user?.lastName ?? ""
+                    }`.trim(),
+                    email: user?.email ?? "",
+                    phone: address?.phone ?? "",
+                },
+
+                bidPrice: bid.bidPrice,
+            };
+        }),
+
+        pagination: {
+            page: pageNumber,
+            limit: limitNumber,
+            total,
+            totalPages: Math.ceil(
+                total / limitNumber
+            ),
+            hasNextPage:
+                pageNumber <
+                Math.ceil(
+                    total / limitNumber
+                ),
+            hasPreviousPage:
+                pageNumber > 1,
+        },
+    };
 };
 
 export const updateAuctionBidService = async (
@@ -208,36 +244,44 @@ export const updateAuctionBidService = async (
         bidPrice: number;
     }
 ) => {
-    const session = await mongoose.startSession();
+    const session =
+        await mongoose.startSession();
 
     try {
         session.startTransaction();
 
-        const auction = await Auction.findById(
-            data.auctionId
-        ).session(session);
+        const auction =
+            await Auction.findById(
+                data.auctionId
+            ).session(session);
 
         if (!auction) {
             throw new Error("Auction not found");
         }
 
-        // Calculate auction status dynamically
-        const auctionStatus = calculateAuctionStatus(
-            auction.startDate,
-            auction.duration
-        );
+        // Calculate auction status
+        const auctionStatus =
+            getAuctionStatus(
+                auction.isActive,
+                auction.startDate,
+                auction.duration
+            );
 
-        if (auctionStatus !== AuctionStatus.LIVE) {
+        if (
+            auctionStatus !==
+            AuctionStatus.LIVE
+        ) {
             throw new Error(
                 "Bidding is available only for live auctions"
             );
         }
 
-        const bid = await AuctionBid.findOne({
-            _id: bidId,
-            auctionId: data.auctionId,
-            userId: data.userId,
-        }).session(session);
+        const bid =
+            await AuctionBid.findOne({
+                _id: bidId,
+                auctionId: data.auctionId,
+                userId: data.userId,
+            }).session(session);
 
         if (!bid) {
             throw new Error(
@@ -251,15 +295,17 @@ export const updateAuctionBidService = async (
             );
         }
 
-        const highestBid = await AuctionBid.findOne({
-            auctionId: data.auctionId,
-        })
-            .sort({ bidPrice: -1 })
-            .session(session);
+        const highestBid =
+            await AuctionBid.findOne({
+                auctionId: data.auctionId,
+            })
+                .sort({ bidPrice: -1 })
+                .session(session);
 
         if (
             highestBid &&
-            data.bidPrice <= highestBid.bidPrice
+            data.bidPrice <=
+                highestBid.bidPrice
         ) {
             throw new Error(
                 `Bid price must be greater than the current highest bid of ${highestBid.bidPrice}`
@@ -268,14 +314,14 @@ export const updateAuctionBidService = async (
 
         bid.bidPrice = data.bidPrice;
 
-        const updatedBid = await bid.save({
-            session,
-        });
+        const updatedBid =
+            await bid.save({
+                session,
+            });
 
         await session.commitTransaction();
 
         return updatedBid;
-
     } catch (error) {
         await session.abortTransaction();
         throw error;
@@ -292,7 +338,9 @@ export const getAllUserBidsService = async (
 ) => {
     const pageNumber = Math.max(Number(page), 1);
     const limitNumber = Math.max(Number(limit), 1);
-    const skip = (pageNumber - 1) * limitNumber;
+
+    const skip =
+        (pageNumber - 1) * limitNumber;
 
     const bids = await AuctionBid.find({
         userId,
@@ -304,107 +352,163 @@ export const getAllUserBidsService = async (
 
     const results = await Promise.all(
         bids.map(async (bid) => {
-            const auction = bid.auctionId as any;
-            const book = bid.bookId as any;
+            /**
+             * Populate can return null when the referenced
+             * auction/book no longer exists.
+             */
+            if (!bid.auctionId || !bid.bookId) {
+                return null;
+            }
+
+            const auction =
+                bid.auctionId as unknown as {
+                    _id: mongoose.Types.ObjectId;
+                    startDate: Date;
+                    duration: number;
+                    isActive: boolean;
+                    bidPrice: number;
+                    buyNowPrice?: number;
+                };
+
+            const book =
+                bid.bookId as unknown as {
+                    _id: mongoose.Types.ObjectId;
+                    name: string;
+                    coverImage?: string;
+                };
+
+            /**
+             * Safety check after populate.
+             */
+            if (!auction._id || !book._id) {
+                return null;
+            }
 
             // Get highest bid
-            const highestBid = await AuctionBid.findOne({
-    auctionId: auction._id,
-})
-    .sort({ bidPrice: -1 })
-    .select("bidPrice userId")
-    .lean();
+            const highestBid =
+                await AuctionBid.findOne({
+                    auctionId: auction._id,
+                })
+                    .sort({
+                        bidPrice: -1,
+                    })
+                    .select("bidPrice userId")
+                    .lean();
 
-const status = calculateAuctionStatus(
-    auction.startDate,
-    auction.duration
-);
+            // Calculate auction status
+            const status = getAuctionStatus(
+                auction.isActive,
+                auction.startDate,
+                auction.duration
+            );
 
-const isHighestBidder =
-    highestBid?.userId?.toString() === userId;
+            const isHighestBidder =
+                highestBid?.userId?.toString() ===
+                userId;
 
-let calculatedBidStatus: string;
+            let calculatedBidStatus: string;
 
-switch (status) {
-    case AuctionStatus.UPCOMING:
-        calculatedBidStatus = "upcoming";
-        break;
+            switch (status) {
+                case AuctionStatus.UPCOMING:
+                    calculatedBidStatus = "upcoming";
+                    break;
 
-    case AuctionStatus.LIVE:
-        calculatedBidStatus = isHighestBidder
-            ? "winning"
-            : "outbid";
-        break;
+                case AuctionStatus.LIVE:
+                    calculatedBidStatus =
+                        isHighestBidder
+                            ? "winning"
+                            : "outbid";
+                    break;
 
-    case AuctionStatus.COMPLETED:
-        calculatedBidStatus = isHighestBidder
-            ? "won"
-            : "lost";
-        break;
+                case AuctionStatus.COMPLETED:
+                    calculatedBidStatus =
+                        isHighestBidder
+                            ? "won"
+                            : "lost";
+                    break;
 
-    case AuctionStatus.CANCELLED:
-        calculatedBidStatus = "cancelled";
-        break;
+                case AuctionStatus.CANCELLED:
+                    calculatedBidStatus = "cancelled";
+                    break;
 
-    default:
-        calculatedBidStatus = "unknown";
-}
+                default:
+                    calculatedBidStatus = "unknown";
+            }
 
-// Find order for this auction/winning bid
-const order = await Order.findOne({
-    userId,
-    "auctionDetails.auctionId": auction._id,
-    "auctionDetails.winningBidId": bid._id,
-})
-    .sort({ orderDate: -1 })
-    .lean();
+            // Find order for this auction/winning bid
+            const order =
+                await Order.findOne({
+                    userId,
+                    "auctionDetails.auctionId":
+                        auction._id,
+                    "auctionDetails.winningBidId":
+                        bid._id,
+                })
+                    .sort({
+                        orderDate: -1,
+                    })
+                    .lean();
 
-return {
-    auction: {
-        ...auction,
-        status,
-        currentBidPrice:
-            highestBid?.bidPrice ?? auction.bidPrice,
-    },
+            return {
+                auction: {
+                    ...auction,
+                    status,
+                    currentBidPrice:
+                        highestBid?.bidPrice ??
+                        auction.bidPrice,
+                },
 
-    book: {
-        _id: book._id,
-        name: book.name,
-        coverImage: book.coverImage,
-    },
+                book: {
+                    _id: book._id,
+                    name: book.name,
+                    coverImage:
+                        book.coverImage,
+                },
 
-    bid: {
-        bidId: bid._id,
-        bidPrice: bid.bidPrice,
-        bidStatus: calculatedBidStatus,
-    },
+                bid: {
+                    bidId: bid._id,
+                    bidPrice: bid.bidPrice,
+                    bidStatus:
+                        calculatedBidStatus,
+                },
 
-    order: order ?? null,
-};
+                order: order ?? null,
+            };
         })
+    );
+
+    // Remove bids whose auction/book could not be populated
+    const validResults = results.filter(
+        (
+            item
+        ): item is NonNullable<typeof item> =>
+            item !== null
     );
 
     // Filter by bid status / auction status
     const filteredResults = bidStatus
         ? bidStatus === "live"
-            ? results.filter(
+            ? validResults.filter(
                   (item) =>
-                      item.auction.status === AuctionStatus.LIVE
+                      item.auction.status ===
+                      AuctionStatus.LIVE
               )
-            : results.filter(
+            : validResults.filter(
                   (item) =>
-                      item.bid.bidStatus === bidStatus
+                      item.bid.bidStatus ===
+                      bidStatus
               )
-        : results;
+        : validResults;
 
     // Total after filtering
     const total = filteredResults.length;
 
     // Pagination
-    const paginatedResults = filteredResults.slice(
-        skip,
-        skip + limitNumber
-    );
+    const paginatedResults =
+        filteredResults.slice(
+            skip,
+            skip + limitNumber
+        );
 
     return {
         data: paginatedResults,
@@ -413,11 +517,16 @@ return {
             page: pageNumber,
             limit: limitNumber,
             total,
-            totalPages: Math.ceil(total / limitNumber),
+            totalPages: Math.ceil(
+                total / limitNumber
+            ),
             hasNextPage:
                 pageNumber <
-                Math.ceil(total / limitNumber),
-            hasPreviousPage: pageNumber > 1,
+                Math.ceil(
+                    total / limitNumber
+                ),
+            hasPreviousPage:
+                pageNumber > 1,
         },
     };
 };

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { auth } from "../middlewares/authMiddleware";
-import { createAuction, getBookAuctionBidDetails, updateAuctionBook } from "../controllers/bookController";
+import { cancelAuction, createAuction, getBookAuctionBidDetails, updateAuctionBook } from "../controllers/bookController";
 import { createAuctionBid, getAllAuctionBids, getAllUserBids, updateAuctionBid } from "../controllers/auctionBidController";
 
 const route = Router();
@@ -12,4 +12,8 @@ route.get( "/:auctionId/bids", auth as any, getAllAuctionBids)
 route.get("/user/:userId/bids",auth as any, getAllUserBids);
 route.get("/:bookId/auction/bid/:userId",auth as any, getBookAuctionBidDetails)
 route.put('/auction-bids/:bidId', updateAuctionBid)
+route.patch(
+    "/:auctionId/cancel",
+    cancelAuction
+);
 export default route;

@@ -1,12 +1,7 @@
 import { Schema, model } from "mongoose";
-import { IAuction } from "./interfaces";
 
-export enum AuctionStatus {
-    UPCOMING = "upcoming",
-    LIVE = "live",
-    COMPLETED = "completed",
-    CANCELLED = "cancelled"
-}
+import { IAuction } from "./interfaces";
+import { AuctionStatus } from "../helper/auctionStatus";
 
 const auctionSchema = new Schema<IAuction>(
     {
@@ -15,6 +10,7 @@ const auctionSchema = new Schema<IAuction>(
             ref: "Book",
             required: true,
         },
+
         bidPrice: {
             type: Number,
             required: true,
@@ -36,7 +32,17 @@ const auctionSchema = new Schema<IAuction>(
             type: Date,
             required: true,
         },
-        
+
+        isActive: {
+            type: Boolean,
+            default: true,
+        },
+
+        status: {
+            type: String,
+            enum: Object.values(AuctionStatus),
+            default: AuctionStatus.UPCOMING,
+        },
     },
     {
         _id: true,
@@ -46,6 +52,9 @@ const auctionSchema = new Schema<IAuction>(
 
 auctionSchema.index({ bookId: 1 });
 
-const Auction = model<IAuction>("Auction", auctionSchema);
+const Auction = model<IAuction>(
+    "Auction",
+    auctionSchema
+);
 
 export default Auction;
