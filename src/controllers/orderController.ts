@@ -19,6 +19,7 @@ import { failResponse, successResponse } from "../utils/response";
 import { StatusCode } from "../utils/StatusCodes";
 import { Request, Response } from "express";
 import { OrderType } from "../models/Order";
+import { AuthRequest } from "../middlewares/authMiddleware";
 
 //get all orders
 export const getAllOrders = async (req: Request, res: Response): Promise<void> => {
@@ -222,20 +223,26 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 };
 
 //Get Order By User Id
-export const getOrderByUserId = async (req: Request, res: Response): Promise<void> => {
+export const getOrderByUserId = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { userId } = req.params as { userId?: string };
-        if (!userId) {
+
+
+        const tokenUserId = req.user
+            ? (req.user as any).id
+            : undefined;
+        const id = userId || tokenUserId;
+        if (!id) {
             failResponse(res, "User Id is required.", StatusCode.Bad_Request);
             return;
         }
 
-        if (!mongoose.Types.ObjectId.isValid(userId)) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
             failResponse(res, "Invalid User Id.", StatusCode.Bad_Request);
             return;
         }
 
-        const orders = await getOrderByUserIdService(userId, req.query);
+        const orders = await getOrderByUserIdService(id, req.query);
         successResponse(res, orders, Messages.Order_Fetch_success, StatusCode.OK);
     } catch (error: any) {
         failResponse(

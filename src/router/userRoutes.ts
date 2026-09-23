@@ -19,28 +19,6 @@ import { auth } from "../middlewares/authMiddleware";
 
 const router = Router();
 
-/**
- * @swagger
- * tags:
- *   name: Users
- *   description: User management and address APIs
- */
-/**
- * @swagger
- * /api/user:
- *   get:
- *     summary: Get all users
- *     tags: [Users]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Successfully retrieved users
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Internal server error
- */
 router.get("/", auth as any, getUsers);
 /**
  * @swagger
@@ -365,31 +343,33 @@ router.put(
  */
 router.delete("/:id", auth as any, deleteUser);
 
-
+/**
+ * @swagger
+ * /api/user/me:
+ *   get:
+ *     summary: Get my profile
+ *     description: Returns the profile of the currently authenticated user identified by the JWT token. Use this endpoint when the user asks for their own profile, my profile, my details, my account details, the logged-in user, the currently logged-in user, or who am I.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved the currently logged-in user's details
+ *       401:
+ *         description: Unauthorized - JWT token is missing or invalid
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/me", auth as any, getUserById);
 /**
  * @swagger
  * /api/user/{id}:
  *   get:
  *     summary: Get user by ID
+ *     description: Returns a specific user using the user ID provided by the user. Use this endpoint only when a specific user ID is provided.
  *     tags: [Users]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: User ID
- *     responses:
- *       200:
- *         description: User retrieved successfully
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: User not found
- *       500:
- *         description: Internal server error
  */
 router.get("/:id", auth as any, getUserById);
 
