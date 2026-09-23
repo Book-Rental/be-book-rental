@@ -9,7 +9,6 @@ import routes from "./router";
 import { errorResponse } from "./utils/response";
 import { handleMcpRequest } from "./mcp/mcpRoute";
 import { chatWithAIAgent } from "./controllers/aiAgentController";
-import { auth } from "./middlewares/authMiddleware";
 const app: any = express();
 
 app.use(express.json());
@@ -33,7 +32,7 @@ app.use(cookieParser());
 
 // Existing APIs
 app.use("/api", routes);
-app.post("/ai", auth, chatWithAIAgent);
+app.post("/ai",  chatWithAIAgent);
 // MCP Server
 app.post("/mcp", handleMcpRequest);
 
