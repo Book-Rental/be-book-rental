@@ -5,12 +5,12 @@ import { createAuctionBid, getAllAuctionBids, getAllUserBids, updateAuctionBid }
 
 const route = Router();
 
-route.post("/create-auction", createAuction);
+route.post("/create-auction",auth as any, createAuction);
 route.put("/update-auction/:auctionId",auth as any,updateAuctionBook)
-route.post("/place-a-bid", createAuctionBid)
-route.get( "/:auctionId/bids", getAllAuctionBids)
-route.get("/user/:userId/bids", getAllUserBids);
-route.get("/:bookId/auction/bid/:userId", getBookAuctionBidDetails)
+route.post("/place-a-bid", auth as any, createAuctionBid)
+route.get( "/:auctionId/bids", auth as any, getAllAuctionBids)
+route.get("/user/:userId/bids",auth as any, getAllUserBids);
+route.get("/:bookId/auction/bid/:userId",auth as any, getBookAuctionBidDetails)
 route.put('/auction-bids/:bidId', updateAuctionBid)
 route.patch(
     "/:auctionId/cancel",

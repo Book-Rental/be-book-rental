@@ -17,7 +17,7 @@ const cpUpload = upload.fields([
 ]);
 
 router.get("/", getAllBooks);
-router.post("/create",auth as any, cpUpload ,createBook);
+router.post("/create", cpUpload ,createBook);
 router.get("/:id", getBookById);
 router.get("/seller/:sellerId", getBooksBySellerId);
 router.delete("/:id",auth as any, deleteBookById);
