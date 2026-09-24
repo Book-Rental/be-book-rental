@@ -225,13 +225,17 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 //Get Order By User Id
 export const getOrderByUserId = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { userId } = req.params as { userId?: string };
+        let { userId } = req.params as { userId: string };
 
+           // If ID is not present, get it from JWT
+        if (!userId && req.user) {
+            const user = req.user as any;
+            userId = user.id;
+        }
 
-        const tokenUserId = req.user
-            ? (req.user as any).id
-            : undefined;
-        const id = userId || tokenUserId;
+        
+        const id = userId ;
+        console.log('userId',id)
         if (!id) {
             failResponse(res, "User Id is required.", StatusCode.Bad_Request);
             return;

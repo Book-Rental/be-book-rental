@@ -19,7 +19,29 @@ import {
 import { auth } from "../middlewares/authMiddleware";
 
 const route = Router();
-
+/**
+ * @swagger
+ * /api/order/me:
+ *   get:
+ *     summary: Get orders for the currently logged-in user
+ *     description: Returns the orders belonging to the authenticated user.
+ *     tags:
+ *       - Orders
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User orders fetched successfully
+ *       401:
+ *         description: Unauthorized - authentication token is missing or invalid
+ *       500:
+ *         description: Internal server error
+ */
+route.get(
+    "/me",
+    auth as any,
+    getOrderByUserId
+);
 /**
  * @openapi
  * tags:
