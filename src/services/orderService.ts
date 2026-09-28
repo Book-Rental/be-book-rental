@@ -51,12 +51,28 @@ export const getAllOrdersService = async (query: OrderQuery) => {
 };
 
 //get By Order
-export const getOrderByOrderIdService = async (orderId: string) => {
+
+export const getOrderByOrderIdService = async (orderIdOrNumber: string) => {
     try {
-        const order = await Order.findById(orderId).populate({
-            path: "items.bookId",
-            select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit ",
-        });
+        const value = orderIdOrNumber.trim();
+
+        let order;
+
+        if (mongoose.Types.ObjectId.isValid(value)) {
+            // If MongoDB ObjectId is passed
+            order = await Order.findById(value).populate({
+                path: "items.bookId",
+                select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit",
+            });
+        } else {
+            // If order number is passed
+            order = await Order.findOne({
+                orderNumber: value
+            }).populate({
+                path: "items.bookId",
+                select: "name author coverImage language edition purchasePrice rentalPricePerDay rentalPricePerWeek rentalPricePerMonth securityDeposit",
+            });
+        }
 
         if (!order) {
             throw new Error("Order not found.");
@@ -64,10 +80,9 @@ export const getOrderByOrderIdService = async (orderId: string) => {
 
         return order;
     } catch (error) {
-        return error;
+        throw error;
     }
 };
-
 const createTransactionBreakup = (
     orderItems: any[],
     amount: any

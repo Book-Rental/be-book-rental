@@ -35,16 +35,33 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
 //get order by id
 export const getOrderById = async (req: Request, res: Response): Promise<void> => {
     try {
-        const orderId = (req.params as { orderId?: string }).orderId;
-        if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
-            failResponse(res, Messages.OrderID_Is_Invalid, StatusCode.Not_Found);
+        const orderIdOrNumber = (req.params as { orderId?: string }).orderId?.trim();
+
+        if (!orderIdOrNumber) {
+            failResponse(
+                res,
+                Messages.OrderID_Is_Invalid,
+                StatusCode.Not_Found
+            );
             return;
         }
-        const order = await getOrderByOrderIdService(orderId);
-        successResponse(res, order, Messages.Order_Fetch_success, StatusCode.OK);
+
+        const order = await getOrderByOrderIdService(orderIdOrNumber);
+
+        successResponse(
+            res,
+            order,
+            Messages.Order_Fetch_success,
+            StatusCode.OK
+        );
     } catch (error) {
-        console.error("Get All Orders Error:", error);
-        failResponse(res, Messages.Internal_Server_Error, StatusCode.Internal_Server_Error);
+        console.error("Get Order Error:", error);
+
+        failResponse(
+            res,
+            Messages.Internal_Server_Error,
+            StatusCode.Internal_Server_Error
+        );
     }
 };
 
