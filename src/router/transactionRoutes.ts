@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import {
+    createLogisticsPayoutController,
     createSellerPayoutController,
     createTransactionController,
     getCustomerSummaryController,
@@ -18,7 +19,7 @@ const router = Router();
 
 router.post("/", createTransactionController);
 
-router.get("/order/:orderId",auth,superAdmin, getTransactionsByOrderIdController);
+router.get("/order/:orderId", auth, superAdmin, getTransactionsByOrderIdController);
 
 router.get("/profit", auth, superAdmin, getProfitSummaryController);
 
@@ -32,6 +33,11 @@ router.get("/seller-payouts/:sellerId", auth, superAdmin, getSellerPayoutDetails
 
 router.get("/customer-summary", auth, superAdmin, getCustomerSummaryController);
 
-router.get("/customer-summary/:customerId",auth,superAdmin,getCustomerTransactionDetailsController);
+router.get("/customer-summary/:customerId", auth, superAdmin, getCustomerTransactionDetailsController);
+
+router.post(
+    "/logistics-payout/:orderItemId",
+    createLogisticsPayoutController
+);
 
 export default router;

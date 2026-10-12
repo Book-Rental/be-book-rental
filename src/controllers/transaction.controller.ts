@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import {
+    createLogisticsPayout,
     createSellerPayout,
     createTransaction,
     getCustomerSummary,
@@ -178,6 +179,49 @@ export const getSellerPayoutsController = async (
             res,
             error.message ||
             "Failed to fetch seller payouts",
+            error.statusCode ||
+            StatusCode.Internal_Server_Error
+        );
+    }
+};
+
+export const createLogisticsPayoutController = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const orderItemId =
+            req.params.orderItemId as string;
+
+        if (!orderItemId) {
+            return failResponse(
+                res,
+                "Order item ID is required",
+                StatusCode.Bad_Request
+            );
+        }
+
+        const payout =
+            await createLogisticsPayout(
+                orderItemId
+            );
+
+        return successResponse(
+            res,
+            payout,
+            "Logistics payout created successfully",
+            StatusCode.OK
+        );
+    } catch (error: any) {
+        console.error(
+            "Create logistics payout error:",
+            error
+        );
+
+        return errorResponse(
+            res,
+            error.message ||
+            "Failed to create logistics payout",
             error.statusCode ||
             StatusCode.Internal_Server_Error
         );

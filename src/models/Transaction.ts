@@ -4,6 +4,7 @@ export enum TransactionType {
     PAYMENT = "PAYMENT",
     REFUND = "REFUND",
     SELLER_PAYOUT = "SELLER_PAYOUT",
+    LOGISTICS_PAYOUT = "LOGISTICS_PAYOUT",
 }
 
 export enum TransactionStatus {
@@ -92,7 +93,7 @@ const TransactionSchema = new Schema(
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true,
+            default: null,
         },
 
         transactionType: {
@@ -134,8 +135,10 @@ const TransactionSchema = new Schema(
             type: [TransactionBreakupSchema],
             required: true,
             validate: {
-                validator: (value: unknown[]) => value.length > 0,
-                message: "Transaction must contain at least one breakup.",
+                validator: (value: unknown[]) =>
+                    value.length > 0,
+                message:
+                    "Transaction must contain at least one breakup.",
             },
         },
     },
