@@ -165,6 +165,117 @@ export const createSellerPayout = async (
     return payout;
 };
 
+export const createLogisticsPayout = async (
+    orderItemId: string
+) => {
+    // 1. Find the original successful customer payment
+    const paymentTransaction = await Transaction.findOne({
+        "breakup.orderItemId": orderItemId,
+        transactionType: TransactionType.PAYMENT,
+        paymentStatus: TransactionStatus.SUCCESS,
+    });
+
+    if (!paymentTransaction) {
+        const error: any = new Error(
+            "Successful payment transaction not found for this order item"
+        );
+
+        error.statusCode = StatusCode.Not_Found;
+
+        throw error;
+    }
+
+    // 2. Find the breakup for this order item
+    const breakup = paymentTransaction.breakup.find(
+        (item: any) =>
+            item.orderItemId.toString() === orderItemId
+    );
+
+    if (!breakup) {
+        const error: any = new Error(
+            "Transaction breakup not found for this order item"
+        );
+
+        error.statusCode = StatusCode.Not_Found;
+
+        throw error;
+    }
+
+    // 3. Get the delivery fee
+    const deliveryFee = breakup.deliveryFee || 0;
+
+    if (deliveryFee <= 0) {
+        const error: any = new Error(
+            "No delivery charge available for logistics payout"
+        );
+
+        error.statusCode =
+            StatusCode.Unprocessable_Entity;
+
+        throw error;
+    }
+
+    // 4. Prevent duplicate logistics payout
+    const existingPayout = await Transaction.findOne({
+        "breakup.orderItemId": orderItemId,
+        transactionType:
+            TransactionType.LOGISTICS_PAYOUT,
+    });
+
+    if (existingPayout) {
+        const error: any = new Error(
+            "Logistics payout has already been created for this order item"
+        );
+
+        error.statusCode = StatusCode.Conflict;
+
+        throw error;
+    }
+
+    // 5. Create logistics payout transaction
+    const payout = await createTransaction({
+        transactionId: `LOG-${Date.now()}`,
+
+        orderId: paymentTransaction.orderId,
+
+        // Logistics payout is an internal expense,
+        // so it is not associated with a customer/seller.
+        userId: null,
+
+        transactionType:
+            TransactionType.LOGISTICS_PAYOUT,
+
+        totalAmount: deliveryFee,
+
+        paymentMethod: "INTERNAL",
+
+        paymentStatus:
+            TransactionStatus.SUCCESS,
+
+        gatewayTransactionId: null,
+
+        breakup: [
+            {
+                orderItemId: breakup.orderItemId,
+
+                bookId: breakup.bookId,
+
+                sellerId: breakup.sellerId,
+
+                rentalAmount: 0,
+
+                securityDeposit: 0,
+
+                deliveryFee: deliveryFee,
+
+                totalAmount: deliveryFee,
+            },
+        ],
+    });
+
+    return payout;
+};
+
 // export const getTransactionByOrderId = async (orderId: string) => {
 //     const transaction = await Transaction.findOne({
 //         orderId,
@@ -233,6 +344,7 @@ export const getProfitSummary = async () => {
             $group: {
                 _id: null,
 
+                // Total successful customer payments
                 totalCustomerPayments: {
                     $sum: {
                         $cond: [
@@ -264,6 +376,7 @@ export const getProfitSummary = async () => {
                     },
                 },
 
+                // Total successful seller payouts
                 totalSellerPayout: {
                     $sum: {
                         $cond: [
@@ -295,6 +408,7 @@ export const getProfitSummary = async () => {
                     },
                 },
 
+                // Total successful customer refunds
                 totalRefund: {
                     $sum: {
                         $cond: [
@@ -325,20 +439,71 @@ export const getProfitSummary = async () => {
                         ],
                     },
                 },
+
+                // Total delivery fees from ALL successful customer payments
+                totalLogisticsPayout: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $and: [
+                                    {
+                                        $eq: [
+                                            "$transactionType",
+                                            TransactionType.PAYMENT,
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$paymentStatus",
+                                            TransactionStatus.SUCCESS,
+                                        ],
+                                    },
+                                    {
+                                        $eq: [
+                                            "$direction",
+                                            TransactionDirection.CREDIT,
+                                        ],
+                                    },
+                                ],
+                            },
+                            {
+                                $reduce: {
+                                    input: "$breakup",
+                                    initialValue: 0,
+                                    in: {
+                                        $add: [
+                                            "$$value",
+                                            {
+                                                $ifNull: [
+                                                    "$$this.deliveryFee",
+                                                    0,
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                            0,
+                        ],
+                    },
+                },
             },
         },
 
+        // Total amount going out of the site
         {
             $set: {
                 totalDebitedAmount: {
                     $add: [
                         "$totalSellerPayout",
                         "$totalRefund",
+                        "$totalLogisticsPayout",
                     ],
                 },
             },
         },
 
+        // Site profit / remaining amount
         {
             $set: {
                 remainingAmount: {
@@ -356,6 +521,7 @@ export const getProfitSummary = async () => {
                 totalCustomerPayments: 1,
                 totalSellerPayout: 1,
                 totalRefund: 1,
+                totalLogisticsPayout: 1,
                 totalDebitedAmount: 1,
                 remainingAmount: 1,
             },
@@ -371,6 +537,7 @@ export const getProfitSummary = async () => {
             totalCustomerPayments: 0,
             totalSellerPayout: 0,
             totalRefund: 0,
+            totalLogisticsPayout: 0,
             totalDebitedAmount: 0,
             remainingAmount: 0,
         }),
@@ -725,17 +892,17 @@ export const getCustomerTransactionDetails = async (
     const payments = transactions.filter(
         (transaction) =>
             transaction.transactionType ===
-                TransactionType.PAYMENT &&
+            TransactionType.PAYMENT &&
             transaction.direction ===
-                TransactionDirection.CREDIT
+            TransactionDirection.CREDIT
     );
 
     const refunds = transactions.filter(
         (transaction) =>
             transaction.transactionType ===
-                TransactionType.REFUND &&
+            TransactionType.REFUND &&
             transaction.direction ===
-                TransactionDirection.DEBIT
+            TransactionDirection.DEBIT
     );
 
     const totalPaid = payments.reduce(
